@@ -712,6 +712,19 @@ Runs the in-app AI assistant through the configured chat provider (the one set i
   { "error": "AI provider is not configured. Add an API key in Settings → AI Provider API Keys." }
   ```
 
+#### `POST /api/v1/ai/agent`
+Agentic builder: asks the chat provider for a structured `{command, payload}` plan and **executes each step on the Command Bus**, so the AI can create assets inside the app.
+- **Request Body**: `{ "prompt": "add a blue cube to the scene" }`
+- **Response `200 OK`**:
+  ```json
+  {
+    "results": [
+      { "command": "sgame_create_3d_primitive", "status": "success", "result": { "entityId": "mesh3d_1" } }
+    ]
+  }
+  ```
+- Like `/api/v1/ai/chat`, returns **`503`** when no chat provider API key is configured. The UI surfaces this in the **Build (agent)** chat mode.
+
 > **Desktop (GUI) mode** embeds the REST/WS/MCP-SSE server automatically on `127.0.0.1:8080`
 > (overridable via `SGAME_PORT`) so the UI's health check, WebSocket, settings, export, and
 > AI-chat calls all work without running a separate `--server` process. A permissive CORS

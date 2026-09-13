@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { chatWithAssistant } from '../services/ai';
+import { chatWithAssistant, runAgent, formatAgentStep } from '../services/ai';
 
 function jsonResponse(body: unknown, ok: boolean, status: number) {
   return { ok, status, json: async () => body } as Response;
@@ -28,5 +28,32 @@ describe('ai chat service', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(chatWithAssistant('hi')).rejects.toThrow(/not configured/);
+  });
+});
+
+describe('AI agent service', () => {
+  it('posts the build prompt and returns executed step results', async () => {
+    const payload = {
+      results: [{ command: 'sgame_create_3d_primitive', status: 'success', result: { entityId: 'mesh3d_1' } }],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(payload, true, 200));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await runAgent('make a box');
+    expect(res.results).toHaveLength(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain('/api/v1/ai/agent');
+    expect(JSON.parse(init.body).prompt).toBe('make a box');
+  });
+
+  it('throws a readable error when the agent provider is unconfigured', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ error: 'AI provider is not configured.' }, false, 503)));
+    await expect(runAgent('x')).rejects.toThrow(/not configured/);
+  });
+
+  it('formats step results into readable lines', () => {
+    expect(formatAgentStep({ command: 'sgame_create_3d_primitive', status: 'success', result: { entityId: 'mesh3d_1' } })).toContain('mesh3d_1');
+    expect(formatAgentStep({ error: 'boom' })).toContain('boom');
+    expect(formatAgentStep({ command: 'sgame_generate_sfx_preset', status: 'success', result: {} })).toContain('sgame_generate_sfx_preset');
   });
 });

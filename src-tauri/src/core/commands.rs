@@ -187,6 +187,7 @@ pub enum Issuer {
     WebSocket,
     Mcp,
     Cli,
+    Ai,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

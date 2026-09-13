@@ -37,6 +37,7 @@ pub fn router(bus: Arc<CommandBus>) -> Router {
         .route("/api/v1/audio/export", get(export_audio_endpoint))
         .route("/api/v1/settings", get(get_settings).post(apply_settings))
         .route("/api/v1/ai/chat", post(ai_chat))
+        .route("/api/v1/ai/agent", post(ai_agent))
         .with_state(bus)
 }
 
@@ -259,6 +260,68 @@ async fn ai_chat(
     }
 }
 
+#[derive(serde::Deserialize)]
+struct AiAgentBody {
+    prompt: String,
+}
+
+/// Extract the first balanced `[...]` JSON array from model output, ignoring
+/// markdown fences and leading/trailing prose so responses stay robust.
+fn extract_json_array(s: &str) -> &str {
+    let s = s.trim();
+    if let Some(start) = s.find('[') {
+        if let Some(end) = s.rfind(']') {
+            if end > start {
+                return &s[start..=end];
+            }
+        }
+    }
+    s
+}
+
+/// Agentic builder: ask the chat provider for a structured `{command, payload}`
+/// plan and execute each step against the live Command Bus. This lets the AI
+/// create assets inside the app, not just reply with text.
+async fn ai_agent(
+    State(bus): State<Arc<CommandBus>>,
+    Json(body): Json<AiAgentBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let prompt = body.prompt.trim();
+    if prompt.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "empty prompt" }))));
+    }
+    let config = crate::ai_gateway::RoutingConfig::default_config();
+    let providers = crate::ai_gateway::configured_providers();
+    let resolved = config.resolve_with_fallback(crate::ai_gateway::AiTask::ChatAssistant);
+    let needs_key = match resolved {
+        Some((provider_name, _)) => !crate::ai_gateway::provider_usable(&provider_name),
+        None => true,
+    };
+    if needs_key {
+        return Err((StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "error": "AI provider is not configured. Add an API key in Settings → AI Provider API Keys." }))));
+    }
+    let sys = "You are SGameStudio's agentic builder. Given a user request, reply with ONLY a JSON array of one or more tool calls, no prose and no markdown fences, using this exact schema: [{\"command\":\"<name>\",\"payload\":{...}}]. Allowed commands: create_2d_shape, create_3d_primitive, generate_sfx_preset, create_music_pattern, assemble_game_entity, export_to_engine, generate_engine_code. Payloads must be camelCase and match each command's fields (example create_3d_primitive: {\"primitiveType\":\"cube\",\"name\":\"Robot\",\"dimensions\":{\"x\":1,\"y\":1,\"z\":1}}).";
+    let combined = format!("{sys}\n\nUser request: {prompt}");
+    let reply = crate::ai_gateway::run_task(&config, &providers, crate::ai_gateway::AiTask::ChatAssistant, &combined)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(serde_json::json!({ "error": e.to_string() }))))?;
+    let extracted = extract_json_array(&reply);
+    let plan: Vec<serde_json::Value> = serde_json::from_str(extracted)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(serde_json::json!({ "error": format!("AI returned an unparseable plan: {e}") }))))?;
+    let mut results = Vec::new();
+    for item in plan {
+        match serde_json::from_value::<StudioCommand>(item) {
+            Ok(cmd) => {
+                let name = cmd.command_name();
+                let res = bus.dispatch(CommandEnvelope::new(Issuer::Ai, cmd)).await;
+                results.push(serde_json::json!({ "command": name, "status": res.status, "result": res.result }));
+            }
+            Err(e) => results.push(serde_json::json!({ "command": null, "error": format!("could not execute step: {e}") })),
+        }
+    }
+    Ok(Json(serde_json::json!({ "results": results })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,5 +369,23 @@ mod tests {
         assert!(wav.len() >= 44);
         assert_eq!(&wav[0..4], b"RIFF");
         assert_eq!(&wav[8..12], b"WAVE");
+    }
+
+    #[test]
+    fn extract_json_array_handles_fences_and_prose() {
+        let with_fence = "Here you go:\n```json\n[{\"command\":\"create_3d_primitive\",\"payload\":{}}]\n```\nLet me know.";
+        assert_eq!(extract_json_array(with_fence), r#"[{"command":"create_3d_primitive","payload":{}}]"#);
+        let raw = "[{\"a\":1}]";
+        assert_eq!(extract_json_array(raw), raw);
+        let no_brackets = "sorry";
+        assert_eq!(extract_json_array(no_brackets), "sorry");
+    }
+
+    #[test]
+    fn agent_payload_deserializes_to_command() {
+        // Matches StudioCommand's #[serde(tag="command", content="payload")] shape.
+        let json = r#"{"command":"create_3d_primitive","payload":{"primitiveType":"cube","name":"Robot","dimensions":{"x":1,"y":1,"z":1}}}"#;
+        let cmd: StudioCommand = serde_json::from_str(json).expect("command+payload should deserialize");
+        assert_eq!(cmd.command_name(), "sgame_create_3d_primitive");
     }
 }
