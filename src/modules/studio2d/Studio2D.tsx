@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, MousePointer2, Square, Circle, Star as StarIcon, Trash2, Pencil, Eraser, Undo2 } from "lucide-react";
+import { Play, Pause, MousePointer2, Square, Circle, Star as StarIcon, Trash2, Pencil, Eraser, Undo2, Bone } from "lucide-react";
 import { Button, Panel } from "../../components/ui/primitives";
 import { dispatchCommand } from "../../services/commandBridge";
 import { lerpPosition, upsertKeyframe, EASING_IDS, EASING_LABELS, type EasingId } from "../../lib/anim";
 import { useStudioStore } from "../../store/studioStore";
 
-type Tool = "select" | "rect" | "ellipse" | "star" | "brush" | "eraser";
+type Tool = "select" | "rect" | "ellipse" | "star" | "brush" | "eraser" | "bone";
 type ShapeKind = "rect" | "ellipse" | "star";
 
 interface LocalShape {
@@ -27,6 +27,12 @@ interface Stroke {
   eraser: boolean;
 }
 
+interface BoneJoint {
+  x: number;
+  y: number;
+  parent: number | null;
+}
+
 interface Keyframe {
   time: number;
   x: number;
@@ -40,6 +46,7 @@ const TOOL_COLORS: Record<Tool, string> = {
   star: "#f43f5e",
   brush: "#34d399",
   eraser: "#ef4444",
+  bone: "#fbbf24",
 };
 const PALETTE = ["#7c3aed", "#22d3ee", "#f43f5e", "#fbbf24", "#34d399", "#94a3b8"];
 const MAX_FRAMES = 48;
@@ -76,6 +83,10 @@ export default function Studio2D() {
   const [brushColor, setBrushColor] = useState(PALETTE[4]);
   const [brushSize, setBrushSize] = useState(6);
   const [painting, setPainting] = useState<{ points: { x: number; y: number }[]; eraser: boolean } | null>(null);
+
+  const [armature, setArmature] = useState<BoneJoint[]>([]);
+  const [rigJoint, setRigJoint] = useState<number | null>(null);
+  const [rigDrag, setRigDrag] = useState<number | null>(null);
 
   const selected = shapes.find((s) => s.id === selectedId) ?? null;
 
@@ -218,7 +229,31 @@ export default function Studio2D() {
       ctx.strokeRect(selected.x - selected.w / 2 - 5, selected.y - selected.h / 2 - 5, selected.w + 10, selected.h + 10);
       ctx.setLineDash([]);
     }
-  }, [shapes, selectedId, playing, frame, drag, keyframes, selected, ease, onion, strokes, painting, brushColor, brushSize]);
+
+    // Skeleton (rig): bones as lines, joints as circles.
+    armature.forEach((j) => {
+      if (j.parent != null) {
+        const p = armature[j.parent];
+        if (p) {
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(j.x, j.y);
+          ctx.strokeStyle = "#fbbf24";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
+    });
+    armature.forEach((j, i) => {
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, i === rigJoint ? 7 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = i === rigJoint ? "#ffffff" : "#fbbf24";
+      ctx.strokeStyle = "#0d1117";
+      ctx.lineWidth = 2;
+      ctx.fill();
+      ctx.stroke();
+    });
+  }, [shapes, selectedId, playing, frame, drag, keyframes, selected, ease, onion, strokes, painting, brushColor, brushSize, armature, rigJoint]);
 
   useEffect(() => {
     redraw();
@@ -235,7 +270,25 @@ export default function Studio2D() {
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
+    if (tool === "bone") {
+      setSelectedId(null);
+      setArmature((prev) => [...prev, { x: px, y: py, parent: prev.length === 0 ? null : prev.length - 1 }]);
+      setRigJoint(armature.length);
+      return;
+    }
     if (tool === "select") {
+      // Joints take priority over shapes: click a joint to select/pose it.
+      let j = -1;
+      let best = 12;
+      armature.forEach((pt, i) => {
+        const d = Math.hypot(px - pt.x, py - pt.y);
+        if (d < best) { best = d; j = i; }
+      });
+      if (j >= 0) {
+        setRigJoint(j);
+        setRigDrag(j);
+        return;
+      }
       const hit = shapeAtPoint(shapes, px, py);
       setSelectedId(hit ? hit.id : null);
       if (hit) setDrag({ id: hit.id, startX: px, startY: py, origX: hit.x, origY: hit.y });
@@ -255,6 +308,13 @@ export default function Studio2D() {
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
       setPainting((prev) => (prev ? { ...prev, points: [...prev.points, { x: px, y: py }] } : prev));
+      return;
+    }
+    if (rigDrag != null) {
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      setArmature((prev) => prev.map((j, i) => (i === rigDrag ? { ...j, x: px, y: py } : j)));
       return;
     }
     if (drag) {
@@ -295,6 +355,7 @@ export default function Studio2D() {
       setDraw(null);
     }
     setDrag(null);
+    setRigDrag(null);
   };
 
   const addKeyframe = () => {
@@ -314,6 +375,22 @@ export default function Studio2D() {
     });
   };
 
+  const removeJoint = (idx: number) => {
+    setArmature((prev) => {
+      const oldParent = prev[idx]?.parent ?? null;
+      const next = prev.filter((_, i) => i !== idx);
+      return next.map((j) => {
+        let par = j.parent;
+        if (par != null) {
+          if (par === idx) par = oldParent;
+          else if (par > idx) par = par - 1;
+        }
+        return { ...j, parent: par };
+      });
+    });
+    if (rigJoint === idx) setRigJoint(null);
+  };
+
   const ratio = useMemo(() => frame / Math.max(1, MAX_FRAMES), [frame]);
 
   return (
@@ -322,9 +399,9 @@ export default function Studio2D() {
         <div className="w-44 shrink-0 border-r border-border p-2 space-y-2">
           <Panel title="Tools">
             <div className="flex flex-col gap-1.5">
-              {(["select", "rect", "ellipse", "star", "brush", "eraser"] as Tool[]).map((t) => (
+              {(["select", "rect", "ellipse", "star", "brush", "eraser", "bone"] as Tool[]).map((t) => (
                 <Button key={t} size="sm" variant={tool === t ? "accent" : "ghost"} className="w-full justify-start gap-2" onClick={() => setTool(t)}>
-                  {t === "select" ? <MousePointer2 className="h-4 w-4" /> : t === "rect" ? <Square className="h-4 w-4" /> : t === "ellipse" ? <Circle className="h-4 w-4" /> : t === "star" ? <StarIcon className="h-4 w-4" /> : t === "brush" ? <Pencil className="h-4 w-4" /> : <Eraser className="h-4 w-4" />}
+                  {t === "select" ? <MousePointer2 className="h-4 w-4" /> : t === "rect" ? <Square className="h-4 w-4" /> : t === "ellipse" ? <Circle className="h-4 w-4" /> : t === "star" ? <StarIcon className="h-4 w-4" /> : t === "brush" ? <Pencil className="h-4 w-4" /> : t === "eraser" ? <Eraser className="h-4 w-4" /> : <Bone className="h-4 w-4" />}
                   {t[0].toUpperCase() + t.slice(1)}
                 </Button>
               ))}
@@ -404,6 +481,28 @@ export default function Studio2D() {
             ) : (
               <p className="text-xs text-muted">Select a shape to animate its position over time.</p>
             )}
+          </Panel>
+
+          <Panel title="Rig (bones)">
+            <div className="space-y-2 text-xs">
+              {tool === "bone" ? (
+                <p className="text-muted">Click the canvas to place joints — each new joint chains onto the last to form a skeleton.</p>
+              ) : (
+                <p className="text-muted">Use the <b>Bone</b> tool to add joints, then the <b>Select</b> tool to click &amp; drag a joint to pose it.</p>
+              )}
+              <div className="flex flex-col gap-1">
+                {armature.length === 0 && <span className="text-muted">No bones yet.</span>}
+                {armature.map((j, i) => (
+                  <div key={i} className={`flex items-center justify-between rounded border px-1.5 py-0.5 ${rigJoint === i ? "border-accent" : "border-border"}`}>
+                    <span className="font-mono">j{i} ({Math.round(j.x)},{Math.round(j.y)})</span>
+                    <button type="button" onClick={() => removeJoint(i)} className="text-red-400 hover:text-red-300" aria-label={`Delete joint ${i}`}>✕</button>
+                  </div>
+                ))}
+              </div>
+              <Button size="sm" variant="ghost" className="w-full justify-start gap-2 text-red-400 hover:text-red-300" onClick={() => { setArmature([]); setRigJoint(null); }} disabled={armature.length === 0}>
+                <Trash2 className="h-4 w-4" /> Clear rig
+              </Button>
+            </div>
           </Panel>
         </div>
 

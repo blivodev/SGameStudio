@@ -664,6 +664,24 @@ Exports a mesh entity to a standard 3D format and returns the file (base64).
   }
   ```
 
+#### `GET /api/v1/audio/export`
+Synthesizes an sfxr sound-effect preset on the backend and returns it as a WAV file (base64). Used by the Audio Studio's per-preset "Export WAV" buttons.
+- **Query Parameters**:
+  - `preset`: `laser` | `explosion` | `powerup` | `hit` | `jump` | `coin` | `blip` | `footstep`
+  - `pitch`: optional pitch variation `[-1.0, 1.0]` (default `0`)
+- **Response `200 OK`**:
+  ```json
+  {
+    "preset": "explosion",
+    "fileName": "explosion.wav",
+    "mimeType": "audio/wav",
+    "sampleRate": 44100,
+    "durationSeconds": 0.6,
+    "sizeBytes": 52964,
+    "dataBase64": "..."
+  }
+  ```
+
 #### `GET /api/v1/settings`
 Reads the live settings: AI routing matrix, which providers have an API key configured (masked), and export defaults.
 ```json

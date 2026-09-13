@@ -2,7 +2,7 @@ use std::sync::Arc;
 use axum::{routing::{get, post}, Router, Json, extract::{State, Query}, http::StatusCode};
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use crate::core::{CommandBus, CommandEnvelope, CommandResult, Issuer, StudioCommand};
-use crate::core::commands::{CodeLanguage, TargetEngine};
+use crate::core::commands::{CodeLanguage, SfxPreset, TargetEngine};
 
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
@@ -34,6 +34,7 @@ pub fn router(bus: Arc<CommandBus>) -> Router {
         .route("/api/v1/project/save", post(project_save))
         .route("/api/v1/assets/generate-code", get(generate_code))
         .route("/api/v1/mesh/export", get(export_mesh_endpoint))
+        .route("/api/v1/audio/export", get(export_audio_endpoint))
         .route("/api/v1/settings", get(get_settings).post(apply_settings))
         .route("/api/v1/ai/chat", post(ai_chat))
         .with_state(bus)
@@ -128,6 +129,44 @@ async fn export_mesh_endpoint(
         "sizeBytes": artifact.bytes.len(),
         "dataBase64": data_b64,
         "download": query.download,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+struct AudioExportQuery {
+    #[serde(default)]
+    preset: Option<String>,
+    #[serde(default)]
+    pitch: f64,
+}
+
+/// GET /api/v1/audio/export?preset=explosion&pitch=0.0
+/// Synthesizes an sfxr sound-effect preset and returns it as a WAV file (base64).
+/// This gives the Audio Studio a real, downloadable audio export without any
+/// external command-line encoder.
+async fn export_audio_endpoint(
+    Query(query): Query<AudioExportQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let preset_name = query.preset.as_deref().unwrap_or("blip");
+    let preset = serde_json::from_str::<SfxPreset>(&format!("\"{preset_name}\""))
+        .map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("Unknown SFX preset: {preset_name}") })),
+            )
+        })?;
+    let sample_rate = crate::audio_dsp::DEFAULT_SAMPLE_RATE;
+    let samples = crate::audio_dsp::render_preset(&preset, query.pitch, sample_rate);
+    let wav = crate::audio_dsp::wav::encode_wav_16bit(&samples, sample_rate);
+    let file_name = format!("{preset_name}.wav");
+    Ok(Json(serde_json::json!({
+        "preset": preset_name,
+        "fileName": file_name,
+        "mimeType": "audio/wav",
+        "sampleRate": sample_rate,
+        "durationSeconds": samples.len() as f64 / sample_rate as f64,
+        "sizeBytes": wav.len(),
+        "dataBase64": crate::settings::encode_b64(&wav),
     })))
 }
 
@@ -250,5 +289,22 @@ mod tests {
         assert_eq!(body.task.as_deref(), Some("chat"));
         let def: AiChatBody = serde_json::from_str(r#"{"message":"hi"}"#).unwrap();
         assert_eq!(def.task, None);
+    }
+
+    #[test]
+    fn sfx_preset_names_parse_and_render_wav() {
+        use crate::core::commands::SfxPreset;
+        // The query param is parsed as a snake_case string -> variant.
+        assert!(matches!(serde_json::from_str::<SfxPreset>("\"explosion\"").unwrap(), SfxPreset::Explosion));
+        assert!(matches!(serde_json::from_str::<SfxPreset>("\"footstep\"").unwrap(), SfxPreset::Footstep));
+        assert!(serde_json::from_str::<SfxPreset>("\"nope\"").is_err());
+
+        // Rendering a preset yields a valid RIFF/WAVE WAV file.
+        let samples = crate::audio_dsp::render_preset(&SfxPreset::Blip, 0.0, 44100);
+        assert!(!samples.is_empty());
+        let wav = crate::audio_dsp::wav::encode_wav_16bit(&samples, 44100);
+        assert!(wav.len() >= 44);
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
     }
 }

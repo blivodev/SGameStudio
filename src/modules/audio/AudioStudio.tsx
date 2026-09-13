@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Download, Loader2 } from 'lucide-react';
 import { parseEntityRef } from '../../lib/parseResult';
 import { dispatchCommand } from '../../services/commandBridge';
+import { exportAudioPreset, downloadAudioResult, SFX_PRESETS, type SfxPresetName } from '../../services/audio';
 import { useStudioStore } from '../../store/studioStore';
 import { Panel, Button } from '../../components/ui/primitives';
 
@@ -12,6 +14,7 @@ export default function AudioStudio() {
   const [voice, setVoice] = useState<string>("en_US-lessac-medium");
   const [effect, setEffect] = useState<string>("none");
   const [vocalText, setVocalText] = useState<string>("");
+  const [exportingPreset, setExportingPreset] = useState<SfxPresetName | null>(null);
   
   const { entities, addEntity, setLastError } = useStudioStore();
 
@@ -25,6 +28,18 @@ export default function AudioStudio() {
       if (ref) addEntity({ ...ref, name: preset, label: "SFX" });
     } catch (e) {
       setLastError(String(e));
+    }
+  };
+
+  const exportSfx = async (preset: SfxPresetName) => {
+    try {
+      setExportingPreset(preset);
+      const res = await exportAudioPreset(preset);
+      downloadAudioResult(res);
+    } catch (e) {
+      setLastError(String(e));
+    } finally {
+      setExportingPreset(null);
     }
   };
 
@@ -77,13 +92,20 @@ export default function AudioStudio() {
   return (
     <div className="flex flex-col h-full overflow-y-auto p-3 gap-3">
       <Panel title="Sound Effects (SFX)">
-        <div className="grid grid-cols-4 gap-2">
-          {["laser", "explosion", "powerup", "hit", "jump", "coin", "blip", "footstep"].map((preset) => (
-            <Button key={preset} onClick={() => generateSfx(preset)}>
-              {preset}
-            </Button>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          {SFX_PRESETS.map((preset) => (
+            <div key={preset} className="flex flex-col gap-1 rounded border border-border p-1.5">
+              <Button size="sm" onClick={() => generateSfx(preset)}>
+                {preset}
+              </Button>
+              <Button size="sm" variant="ghost" className="gap-1 text-[11px]" onClick={() => exportSfx(preset)} disabled={exportingPreset !== null} aria-label={`Export ${preset} WAV`}>
+                {exportingPreset === preset ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                WAV
+              </Button>
+            </div>
           ))}
         </div>
+        <p className="mt-1 text-[11px] text-muted">Generate a preset into the scene, or export it straight to a downloadable .wav via the backend synth.</p>
       </Panel>
 
       <Panel title="Vocals">
