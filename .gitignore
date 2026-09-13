@@ -1,0 +1,21 @@
+# Rust/Cargo build output (workspace + sub-crates)
+target/
+
+# Node dependencies
+node_modules/
+
+# Frontend build output
+dist/
+
+# Tauri generated files
+src-tauri/gen/
+src-tauri/target/
+
+# Temporary project files
+*.sgsproj.tmp
+
+# OS-specific files
+.DS_Store
+
+# Local environment / tooling output
+.kilo/tool-output/

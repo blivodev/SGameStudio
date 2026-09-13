@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root, [data-theme="obsidian"] {
+  --sg-bg: 13 17 23;
+  --sg-surface: 22 27 34;
+  --sg-surface-alt: 22 27 34;
+  --sg-border: 48 54 61;
+  --sg-accent: 124 58 237;
+  --sg-accent-2: 168 85 247;
+  --sg-text: 240 246 252;
+  --sg-muted: 139 148 158;
+}
+
+[data-theme="cyberpunk"] {
+  --sg-bg: 10 10 20;
+  --sg-surface: 18 18 38;
+  --sg-surface-alt: 18 18 38;
+  --sg-border: 44 44 84;
+  --sg-accent: 0 240 255;
+  --sg-accent-2: 255 0 85;
+  --sg-text: 240 246 252;
+  --sg-muted: 120 130 160;
+}
+
+[data-theme="paper"] {
+  --sg-bg: 248 250 252;
+  --sg-surface: 255 255 255;
+  --sg-surface-alt: 241 245 249;
+  --sg-border: 226 232 240;
+  --sg-accent: 37 99 235;
+  --sg-accent-2: 59 130 246;
+  --sg-text: 15 23 42;
+  --sg-muted: 100 116 139;
+}
+
+[data-theme="high-contrast"] {
+  --sg-bg: 0 0 0;
+  --sg-surface: 17 17 17;
+  --sg-surface-alt: 17 17 17;
+  --sg-border: 255 255 255;
+  --sg-accent: 255 255 0;
+  --sg-accent-2: 255 255 0;
+  --sg-text: 255 255 255;
+  --sg-muted: 200 200 200;
+}
+
+.glass-panel {
+  @apply bg-surface/70 border border-border backdrop-blur-md;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded;
+}

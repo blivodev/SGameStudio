@@ -1,0 +1,72 @@
+{
+  "entity_name": "PixelKnight",
+  "dimension": "2D",
+  "version": "1.0.0",
+  "description": "Starter 2D melee hero with skeletal vector rig, animation states, and synced audio triggers.",
+  "visual_source": {
+    "type": "vector_svg",
+    "path": "./knight_vectors.svg",
+    "layer_groups": ["head_helmet", "torso_armor", "sword_main", "shield_guard", "limbs_boots"]
+  },
+  "rig": {
+    "type": "skeletal_2d",
+    "bone_count": 14,
+    "root_bone": "bone_root",
+    "ik_chains": [
+      { "name": "leg_left_ik", "target": "bone_foot_l", "pole": "bone_knee_l", "length": 2 },
+      { "name": "leg_right_ik", "target": "bone_foot_r", "pole": "bone_knee_r", "length": 2 }
+    ]
+  },
+  "collision": {
+    "type": "capsule",
+    "width": 32.0,
+    "height": 64.0,
+    "offset_y": -32.0
+  },
+  "sockets": [
+    { "name": "socket_weapon_r", "parent_bone": "bone_hand_r", "offset": [0, 10] },
+    { "name": "socket_shield_l", "parent_bone": "bone_forearm_l", "offset": [5, 0] }
+  ],
+  "animations": [
+    {
+      "name": "Idle",
+      "fps": 24,
+      "loop": true,
+      "frame_count": 24,
+      "audio_events": []
+    },
+    {
+      "name": "Run",
+      "fps": 24,
+      "loop": true,
+      "frame_count": 16,
+      "audio_events": [
+        { "frame": 4, "sound_id": "sfx_footstep_left", "path": "./audio/sfx_step.wav" },
+        { "frame": 12, "sound_id": "sfx_footstep_right", "path": "./audio/sfx_step.wav" }
+      ]
+    },
+    {
+      "name": "Slash",
+      "fps": 24,
+      "loop": false,
+      "frame_count": 18,
+      "audio_events": [
+        { "frame": 3, "sound_id": "vocal_knight_grunt", "path": "./audio/vocal_grunt.wav" },
+        { "frame": 6, "sound_id": "sfx_sword_slash", "path": "./audio/sfx_slash.wav" }
+      ]
+    }
+  ],
+  "engine_export_meta": {
+    "godot4": {
+      "root_node": "CharacterBody2D",
+      "collision_shape": "CapsuleShape2D",
+      "animation_node": "AnimationPlayer",
+      "controller_script": "./scripts/KnightController.gd"
+    },
+    "unity": {
+      "prefab_type": "2D_Skeletal_Sprite",
+      "animator_controller": "KnightAnimatorController",
+      "controller_script": "./scripts/KnightController.cs"
+    }
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "$schema": "./settings.schema.json",
+  "app_version": "1.0.0",
+  "appearance": {
+    "theme": "obsidian",
+    "available_themes": ["obsidian", "cyberpunk", "paper", "high-contrast"],
+    "font_family": "Inter, Roboto, sans-serif",
+    "ui_scale": 1.0,
+    "viewport_framerate_limit": 60,
+    "show_fps_counter": false
+  },
+  "server": {
+    "headless_default_port": 8080,
+    "bind_host": "127.0.0.1",
+    "enable_cors": true,
+    "enable_auth": false,
+    "auth_token": "",
+    "mcp_sse_enabled": true
+  },
+  "service_supervisor": {
+    "auto_manage_internal_services": true,
+    "hide_all_console_windows": true,
+    "auto_clean_zombie_processes": true,
+    "sandboxed_storage_path": "%LOCALAPPDATA%/SGameStudio/sandbox",
+    "auto_verify_downloads_sha256": true
+  },
+  "ai_routing": {
+    "chat_assistant": {
+      "provider": "deepinfra",
+      "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+      "fallback_provider": "openrouter",
+      "fallback_model": "deepseek/deepseek-chat",
+      "temperature": 0.4
+    },
+    "vector_2d_generation": {
+      "provider": "openrouter",
+      "model": "anthropic/claude-3.5-sonnet",
+      "fallback_provider": "gemini",
+      "fallback_model": "gemini-1.5-flash",
+      "temperature": 0.2
+    },
+    "model_3d_generation": {
+      "provider": "comfyui_local",
+      "endpoint": "http://127.0.0.1:8188",
+      "workflow": "trellis_text_to_3d",
+      "fallback_provider": "deepinfra",
+      "fallback_model": "stabilityai/triposr"
+    },
+    "texture_pbr_generation": {
+      "provider": "deepinfra",
+      "model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "fallback_provider": "comfyui_local",
+      "fallback_model": "sdxl_pbr_workflow"
+    },
+    "auto_rigging_2d_heuristic": {
+      "provider": "gemini",
+      "model": "gemini-1.5-flash",
+      "temperature": 0.1
+    },
+    "auto_rigging_3d_heuristic": {
+      "provider": "openrouter",
+      "model": "openai/gpt-4o-mini",
+      "temperature": 0.1
+    },
+    "audio_sfx_prompt": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-chat",
+      "temperature": 0.7
+    },
+    "vocal_speech_tts": {
+      "provider": "local_piper",
+      "executable_path": "piper",
+      "voice_model": "en_US-lessac-medium"
+    },
+    "music_composition": {
+      "provider": "local_audiocraft",
+      "model": "musicgen-small",
+      "fallback_provider": "openrouter",
+      "fallback_model": "meta-llama/llama-3-8b-instruct"
+    }
+  },
+  "providers": {
+    "openrouter": {
+      "api_key": "${OPENROUTER_API_KEY}",
+      "base_url": "https://openrouter.ai/api/v1"
+    },
+    "deepinfra": {
+      "api_key": "${DEEPINFRA_API_KEY}",
+      "base_url": "https://api.deepinfra.com/v1/openai"
+    },
+    "gemini": {
+      "api_key": "${GEMINI_API_KEY}",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta"
+    },
+    "openai": {
+      "api_key": "${OPENAI_API_KEY}",
+      "base_url": "https://api.openai.com/v1"
+    },
+    "anthropic": {
+      "api_key": "${ANTHROPIC_API_KEY}",
+      "base_url": "https://api.anthropic.com/v1"
+    },
+    "ollama_local": {
+      "base_url": "http://127.0.0.1:11434"
+    },
+    "comfyui_local": {
+      "base_url": "http://127.0.0.1:8188"
+    }
+  },
+  "export_defaults": {
+    "default_engine": "godot4",
+    "texture_format": "webp",
+    "audio_format": "ogg",
+    "mesh_format": "glb",
+    "embed_textures": true,
+    "generate_controller_code": true,
+    "default_controller_language": "gdscript"
+  },
+  "studio_defaults": {
+    "default_3d_mode": "node_sketch",
+    "symmetry_default": true,
+    "auto_rig_on_node_mesh": true
+  }
+}

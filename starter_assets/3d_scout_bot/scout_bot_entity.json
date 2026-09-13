@@ -1,0 +1,83 @@
+{
+  "entity_name": "ScoutBot",
+  "dimension": "3D",
+  "version": "1.0.0",
+  "description": "Starter 3D low-poly robotic scout with humanoid armature, PBR metallic materials, and synced audio triggers.",
+  "visual_source": {
+    "type": "gltf_mesh",
+    "path": "./scout_bot.glb",
+    "submeshes": ["Chassis", "Visor", "LeftArm", "RightArm", "ThrusterPod"],
+    "poly_count": 842,
+    "materials": ["M_Robot_Chassis_PBR", "M_Visor_Emissive"]
+  },
+  "rig": {
+    "type": "armature_3d",
+    "bone_count": 19,
+    "root_bone": "Root",
+    "template": "humanoid_standard",
+    "ik_chains": [
+      { "name": "IK_Leg_L", "chain_tip": "Foot_L", "chain_root": "Thigh_L", "pole_target": "Knee_Pole_L" },
+      { "name": "IK_Leg_R", "chain_tip": "Foot_R", "chain_root": "Thigh_R", "pole_target": "Knee_Pole_R" }
+    ]
+  },
+  "collision": {
+    "type": "capsule",
+    "radius": 0.45,
+    "height": 1.75,
+    "center": [0, 0.875, 0]
+  },
+  "sockets": [
+    { "name": "socket_eye_sensor", "parent_bone": "Head", "offset": [0, 0.1, 0.2] },
+    { "name": "socket_blaster_r", "parent_bone": "Hand_R", "offset": [0, 0, 0.15] }
+  ],
+  "animations": [
+    {
+      "name": "Hover_Idle",
+      "fps": 30,
+      "loop": true,
+      "frame_count": 30,
+      "audio_events": [
+        { "frame": 0, "sound_id": "sfx_engine_hum_loop", "path": "./audio/engine_hum.wav" }
+      ]
+    },
+    {
+      "name": "Stride_Walk",
+      "fps": 30,
+      "loop": true,
+      "frame_count": 20,
+      "audio_events": [
+        { "frame": 5, "sound_id": "sfx_servo_step_l", "path": "./audio/servo_step.wav" },
+        { "frame": 15, "sound_id": "sfx_servo_step_r", "path": "./audio/servo_step.wav" }
+      ]
+    },
+    {
+      "name": "Fire_Laser",
+      "fps": 30,
+      "loop": false,
+      "frame_count": 25,
+      "audio_events": [
+        { "frame": 2, "sound_id": "sfx_charge_up", "path": "./audio/laser_charge.wav" },
+        { "frame": 8, "sound_id": "sfx_laser_blast", "path": "./audio/laser_blast.wav" },
+        { "frame": 12, "sound_id": "vocal_target_eliminated", "path": "./audio/voice_target.wav" }
+      ]
+    }
+  ],
+  "engine_export_meta": {
+    "godot4": {
+      "root_node": "CharacterBody3D",
+      "collision_shape": "CapsuleShape3D",
+      "animation_node": "AnimationPlayer",
+      "controller_script": "./scripts/ScoutBotController.gd"
+    },
+    "unity": {
+      "prefab_type": "3D_Humanoid_Prefab",
+      "animator_controller": "ScoutBotAnimatorController",
+      "controller_script": "./scripts/ScoutBotController.cs"
+    },
+    "unreal5": {
+      "skeletal_mesh": "SK_ScoutBot",
+      "anim_blueprint": "ABP_ScoutBot",
+      "controller_cpp": "./scripts/ScoutBotCharacter.cpp"
+    }
+  }
+}
