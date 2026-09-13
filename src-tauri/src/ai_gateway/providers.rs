@@ -29,25 +29,28 @@ pub enum Provider {
 
 impl Provider {
     pub fn from_name(name: &str) -> Option<Self> {
+        // Pull the real key from settings: env var SGAME_<PROVIDER>_KEY or the
+        // on-disk providers.json (masked/obfuscated at rest).
+        let key = crate::settings::resolve_api_key(name).unwrap_or_default();
         match name {
             "openrouter" => Some(Provider::OpenRouter {
-                api_key: String::new(),
+                api_key: key,
                 base_url: "https://openrouter.ai/api/v1".to_string(),
             }),
             "deepinfra" => Some(Provider::DeepInfra {
-                api_key: String::new(),
+                api_key: key,
                 base_url: "https://api.deepinfra.com/v1/openai".to_string(),
             }),
             "openai" => Some(Provider::OpenAI {
-                api_key: String::new(),
+                api_key: key,
                 base_url: "https://api.openai.com/v1".to_string(),
             }),
             "anthropic" => Some(Provider::Anthropic {
-                api_key: String::new(),
+                api_key: key,
                 base_url: "https://api.anthropic.com/v1".to_string(),
             }),
             "gemini" => Some(Provider::Gemini {
-                api_key: String::new(),
+                api_key: key,
                 base_url: "https://generativelanguage.googleapis.com/v1beta".to_string(),
             }),
             "ollama_local" => Some(Provider::Ollama {

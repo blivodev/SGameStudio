@@ -34,6 +34,7 @@ pub fn router(bus: Arc<CommandBus>) -> Router {
         .route("/api/v1/project/save", post(project_save))
         .route("/api/v1/assets/generate-code", get(generate_code))
         .route("/api/v1/mesh/export", get(export_mesh_endpoint))
+        .route("/api/v1/settings", get(get_settings).post(apply_settings))
         .with_state(bus)
 }
 
@@ -127,4 +128,39 @@ async fn export_mesh_endpoint(
         "dataBase64": data_b64,
         "download": query.download,
     })))
+}
+
+/// GET /api/v1/settings — the full settings payload (AI routing + which
+/// providers have keys configured, masked) read straight from the store.
+async fn get_settings() -> Json<serde_json::Value> {
+    Json(crate::settings::settings_response())
+}
+
+#[derive(serde::Deserialize)]
+struct SettingsBody {
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    api_key: Option<String>,
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default)]
+    clear: bool,
+}
+
+/// PUT /api/v1/settings
+/// Body: { "provider": "openrouter", "apiKey": "sk-..." }
+/// Saves the key (obfuscated at rest via the settings store).
+async fn apply_settings(Json(body): Json<SettingsBody>) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let Some(provider) = body.provider.as_deref() else {
+        return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "missing provider" }))));
+    };
+    let result = crate::settings::apply_provider_settings(
+        provider,
+        body.api_key.as_deref(),
+        body.base_url.as_deref(),
+        body.clear,
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?;
+    Ok(Json(result))
 }

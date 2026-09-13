@@ -3,6 +3,7 @@ pub mod server;
 pub mod mcp;
 pub mod mesh_kernel;
 pub mod export;
+pub mod settings;
 pub mod audio_dsp;
 pub mod ai_gateway;
 
