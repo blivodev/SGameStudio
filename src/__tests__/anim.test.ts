@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lerpPosition, upsertKeyframe, easing } from '../lib/anim';
+import { lerpPosition, lerpPosition3, upsertKeyframe, upsertKeyframe3, easing } from '../lib/anim';
 
 const kfs = [
   { time: 0, x: 0, y: 0 },
@@ -52,5 +52,30 @@ describe('easing', () => {
     expect(eased.x).toBeLessThan(150);
     // linear keeps the old midpoint
     expect(lerpPosition(kfs, 15)!.x).toBe(150);
+  });
+});
+
+describe('3D pose interpolation', () => {
+  const k3 = [
+    { time: 0, x: 0, y: 0, z: 0 },
+    { time: 10, x: 10, y: 20, z: 30 },
+    { time: 20, x: 20, y: 40, z: 0 },
+  ];
+
+  it('interpolates xyz linearly across a segment', () => {
+    expect(lerpPosition3(k3, 5)).toEqual({ x: 5, y: 10, z: 15 });
+    expect(lerpPosition3(k3, 15)).toEqual({ x: 15, y: 30, z: 15 });
+  });
+
+  it('clamps to endpoints and handles empty lists', () => {
+    expect(lerpPosition3(k3, 0)).toEqual({ x: 0, y: 0, z: 0 });
+    expect(lerpPosition3(k3, 30)).toEqual({ x: 20, y: 40, z: 0 });
+    expect(lerpPosition3([], 5)).toBeNull();
+  });
+
+  it('upserts and keeps 3D poses sorted', () => {
+    const updated = upsertKeyframe3(k3, { time: 15, x: 99, y: 1, z: 2 });
+    expect(updated.map((k) => k.time)).toEqual([0, 10, 15, 20]);
+    expect(updated.find((k) => k.time === 15)).toEqual({ time: 15, x: 99, y: 1, z: 2 });
   });
 });

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { Play, Pause } from 'lucide-react';
 import { parseEntityRef } from '../../lib/parseResult';
 import { dispatchCommand } from '../../services/commandBridge';
 import { exportMesh, downloadAssetResult, type MeshFormatId } from '../../services/export';
+import { lerpPosition3, upsertKeyframe3, EASING_IDS, EASING_LABELS, type EasingId, type Keyframe3 } from '../../lib/anim';
 import { useStudioStore } from '../../store/studioStore';
 import { Button, Panel } from '../../components/ui/primitives';
+
+const MAX_3D_FRAMES = 60;
 
 export default function Studio3D() {
   const { entities, addEntity, setLastError } = useStudioStore();
@@ -13,6 +17,12 @@ export default function Studio3D() {
   const [selectedMesh, setSelectedMesh] = useState<string>("");
   const [exporting, setExporting] = useState<MeshFormatId | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
+
+  const [pose, setPose] = useState<Record<string, { x: number; y: number; z: number }>>({});
+  const [poseKeyframes, setPoseKeyframes] = useState<Record<string, Keyframe3[]>>({});
+  const [frame3d, setFrame3d] = useState(0);
+  const [playing3d, setPlaying3d] = useState(false);
+  const [ease3d, setEase3d] = useState<EasingId>("linear");
 
   const meshes = useMemo(() => entities.filter((e) => e.kind === "mesh3d"), [entities]);
 
@@ -34,6 +44,20 @@ export default function Studio3D() {
     } finally {
       setExporting(null);
     }
+  };
+
+  const recordPose = () => {
+    if (!selectedMesh) return;
+    const p = pose[selectedMesh] ?? { x: 0, y: 0, z: 0 };
+    setPoseKeyframes((prev) => ({ ...prev, [selectedMesh]: upsertKeyframe3(prev[selectedMesh] ?? [], { time: frame3d, x: p.x, y: p.y, z: p.z }) }));
+  };
+
+  const setAxis = (axis: "x" | "y" | "z", value: number) => {
+    if (!selectedMesh) return;
+    setPose((prev) => {
+      const cur = prev[selectedMesh] ?? { x: 0, y: 0, z: 0 };
+      return { ...prev, [selectedMesh]: { ...cur, [axis]: value } };
+    });
   };
 
   const threeRef = useRef<{
@@ -139,7 +163,7 @@ export default function Studio3D() {
 
     threeRef.current!.meshes = entities
       .filter(e => e.kind === "mesh3d")
-      .map((_e, i) => {
+      .map((e, i) => {
         let geometry: THREE.BufferGeometry;
         const color = 0x7c3aed;
         const material = new THREE.MeshStandardMaterial({
@@ -157,13 +181,40 @@ export default function Studio3D() {
         }
 
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(-2 + (i % 5) * 1.1, 0.5, Math.floor(i / 5) * 1.1);
+        mesh.name = e.name;
+        const gx = -2 + (i % 5) * 1.1;
+        const gy = 0.5;
+        const gz = Math.floor(i / 5) * 1.1;
+        mesh.position.set(gx, gy, gz);
+        setPose((prev) => (e.name in prev ? prev : { ...prev, [e.name]: { x: gx, y: gy, z: gz } }));
         scene.add(mesh);
         return mesh;
       });
 
     return () => {};
   }, [entities]);
+
+  // 3D playback loop
+  useEffect(() => {
+    if (!playing3d) return;
+    const id = window.setInterval(() => setFrame3d((f) => (f >= MAX_3D_FRAMES ? 0 : f + 1)), 90);
+    return () => window.clearInterval(id);
+  }, [playing3d]);
+
+  // Apply scratch poses or keyframed motion to each mesh.
+  useEffect(() => {
+    const list = threeRef.current?.meshes ?? [];
+    list.forEach((mesh) => {
+      const kfs = poseKeyframes[mesh.name];
+      if (kfs && kfs.length > 0) {
+        const p = lerpPosition3(kfs, frame3d, ease3d);
+        if (p) mesh.position.set(p.x, p.y, p.z);
+      } else if (pose[mesh.name]) {
+        const p2 = pose[mesh.name];
+        mesh.position.set(p2.x, p2.y, p2.z);
+      }
+    });
+  }, [entities, pose, poseKeyframes, frame3d, ease3d]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -223,7 +274,8 @@ export default function Studio3D() {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex gap-2 p-2 border-b border-border">
           <Button onClick={() => addPrimitive("cube")}>Add Cube</Button>
@@ -270,6 +322,68 @@ export default function Studio3D() {
         </Panel>
 
         <div className="mt-2">
+          <Panel title="Pose & Animate">
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-[11px] text-muted">Pose target</label>
+                <select
+                  value={selectedMesh}
+                  onChange={(e) => setSelectedMesh(e.target.value)}
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                >
+                  {meshes.length === 0 && <option value="">No meshes</option>}
+                  {meshes.map((m) => (
+                    <option key={m.id} value={m.name}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {(["x", "y", "z"] as const).map((axis) => {
+                const val = selectedMesh ? (pose[selectedMesh] ?? { x: 0, y: 0, z: 0 })[axis] : 0;
+                return (
+                  <div key={axis} className="flex items-center gap-2">
+                    <span className="w-4 font-mono text-[11px] uppercase text-muted">{axis}</span>
+                    <input
+                      type="range"
+                      min={-3}
+                      max={3}
+                      step={0.1}
+                      value={val}
+                      onChange={(e) => setAxis(axis, Number(e.target.value))}
+                      className="min-w-0 flex-1"
+                      aria-label={`${axis} axis`}
+                    />
+                    <span className="w-10 text-right font-mono text-[11px]">{val.toFixed(1)}</span>
+                  </div>
+                );
+              })}
+
+              <Button size="sm" disabled={!selectedMesh} onClick={recordPose}>
+                Record Pose @ Frame {frame3d}
+              </Button>
+
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[11px] text-muted">Ease</label>
+                <select value={ease3d} onChange={(e) => setEase3d(e.target.value as EasingId)} className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px]" aria-label="3D easing">
+                  {EASING_IDS.map((id) => (
+                    <option key={id} value={id}>{EASING_LABELS[id]}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                {(selectedMesh ? poseKeyframes[selectedMesh] ?? [] : []).map((k) => (
+                  <span key={k.time} className="rounded bg-surfaceAlt px-1.5 py-0.5 font-mono text-[10px]">f{k.time}</span>
+                ))}
+                {(selectedMesh ? (poseKeyframes[selectedMesh] ?? []).length : 0) === 0 && (
+                  <span className="text-[11px] text-muted">No poses recorded. Scrub the timeline, move the sliders, then Record.</span>
+                )}
+              </div>
+            </div>
+          </Panel>
+        </div>
+
+        <div className="mt-2">
           <Panel title="Scene">
             <div className="flex flex-col gap-1 text-xs">
               {meshes.length === 0 && <span className="text-muted">Add a primitive to populate the scene.</span>}
@@ -283,6 +397,27 @@ export default function Studio3D() {
           </Panel>
         </div>
       </div>
+      </div>
+
+      <footer className="flex shrink-0 items-center gap-3 border-t border-border px-3 py-2">
+        <Button size="sm" variant={playing3d ? "default" : "accent"} onClick={() => setPlaying3d((p) => !p)}>
+          {playing3d ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />} {playing3d ? "Pause" : "Play"}
+        </Button>
+        <span className="text-xs text-muted">Frame {frame3d}/{MAX_3D_FRAMES}</span>
+        <div className="relative h-5 flex-1 rounded bg-surfaceAlt">
+          <div className="absolute inset-y-0 left-0 rounded bg-accent/40" style={{ width: `${(frame3d / MAX_3D_FRAMES) * 100}%` }} />
+          <input
+            type="range"
+            min={0}
+            max={MAX_3D_FRAMES}
+            value={frame3d}
+            onChange={(e) => { setPlaying3d(false); setFrame3d(Number(e.target.value)); }}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            aria-label="3D timeline"
+          />
+        </div>
+        <span className="text-[11px] text-muted">{selectedMesh ? `Animating ${selectedMesh}` : "No mesh selected"}</span>
+      </footer>
     </div>
   );
 }

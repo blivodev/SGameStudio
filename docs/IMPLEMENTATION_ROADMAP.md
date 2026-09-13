@@ -54,6 +54,8 @@ Frontend increments shipped: editable API-key Settings dialog, real AI Assistant
 
 **Remaining (largest gap is frontend):** full 2D rigging + tween easing + onion skin, 3D modeling/armature + IK/FK + NLA, DAW multi-track mixer + render-to-file, video/motion tab, animation workbench consolidation, in-app AI agentic tool-calling, and starter asset pack.
 
+> **Frontend now shipped (2026-09):** 2D painting (freehand brush/eraser + color/size), 2D skeletal rigging (bones: place joints, drag to pose, delete/clear), 2D keyframe animation with easing + onion skin, Animation tab + Video/Motion tab (clip timeline), 3D Studio keyframe pose animation with easing + playback, audio WAV export (all SFX presets), and an AI chat wired to configured providers.
+
 ---
 
 ## 2. Target Project Directory Structure
