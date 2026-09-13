@@ -397,6 +397,37 @@ pub fn tool_definitions() -> Vec<ToolDef> {
                 "required": ["entityName", "targetEngine", "language"]
             }),
         },
+        ToolDef {
+            name: "sgame_export_asset",
+            description: "Export a mesh asset to a standard 3D format (OBJ/STL/GLB/PLY).",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "entity": str_t("Mesh entity id or name."),
+                    "format": { "type": "string", "enum": ["obj", "stl", "stl_bin", "ply", "ply_bin", "glb", "svg"], "default": "obj" }
+                },
+                "required": ["entity"]
+            }),
+        },
+        ToolDef {
+            name: "sgame_get_settings",
+            description: "Get current studio settings: AI task routing and which providers have API keys (masked).",
+            input_schema: json!({ "type": "object", "properties": {} }),
+        },
+        ToolDef {
+            name: "sgame_save_provider_key",
+            description: "Save (or clear) an AI provider API key so the embedded AI assistant can use it.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "provider": { "type": "string", "enum": ["openrouter", "deepinfra", "openai", "anthropic", "gemini"] },
+                    "apiKey": str_t("Provider API key (omit when clearing)."),
+                    "baseUrl": str_t("Optional provider base URL override."),
+                    "clear": { "type": "boolean", "default": false }
+                },
+                "required": ["provider"]
+            }),
+        },
     ]
 }
 
@@ -404,6 +435,43 @@ pub fn tool_definitions() -> Vec<ToolDef> {
 pub async fn call_tool(bus: &CommandBus, name: &str, arguments: Value) -> Result<Value, String> {
     if name == "sgame_get_scene_summary" {
         return Ok(bus.state_summary_json());
+    }
+
+    // Non-StudioCommand MCP tools: export and settings are module-level operations
+    // rather than scene edits, so they are handled here (not dispatched to the bus).
+    if name == "sgame_export_asset" {
+        let entity = arguments["entity"].as_str().unwrap_or_default().to_string();
+        let format = arguments["format"].as_str().unwrap_or("obj").to_string();
+        let fmt = crate::export::MeshFormat::from_str(&format)
+            .ok_or_else(|| format!("Unsupported format: {format}"))?;
+        let art = bus
+            .with_state(|s| crate::export::export_mesh(s, &entity, fmt))
+            .map_err(|e| e.to_string())?;
+        return Ok(json!({
+            "entity": entity,
+            "format": fmt.extension(),
+            "fileName": art.file_name,
+            "mimeType": art.mime,
+            "sizeBytes": art.bytes.len(),
+            "dataBase64": crate::settings::encode_b64(&art.bytes),
+        }));
+    }
+    if name == "sgame_get_settings" {
+        return Ok(crate::settings::settings_response());
+    }
+    if name == "sgame_save_provider_key" {
+        let provider = arguments["provider"].as_str().unwrap_or_default().to_string();
+        let api_key = arguments["apiKey"].as_str().map(|s| s.to_string());
+        let base_url = arguments["baseUrl"].as_str().map(|s| s.to_string());
+        let clear = arguments["clear"].as_bool().unwrap_or_default();
+        let res = crate::settings::apply_provider_settings(
+            &provider,
+            api_key.as_deref(),
+            base_url.as_deref(),
+            clear,
+        )
+        .map_err(|e| e.to_string())?;
+        return Ok(res);
     }
 
     let def = tool_definitions()
@@ -481,6 +549,9 @@ mod tests {
             assert!(names.contains(name), "missing tool definition for {name}");
         }
         assert!(names.contains("sgame_get_scene_summary"));
-        assert_eq!(names.len(), 25);
+        assert!(names.contains("sgame_export_asset"));
+        assert!(names.contains("sgame_get_settings"));
+        assert!(names.contains("sgame_save_provider_key"));
+        assert_eq!(names.len(), 28);
     }
 }

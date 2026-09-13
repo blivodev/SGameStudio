@@ -159,6 +159,13 @@ pub fn mask_key(key: &str) -> String {
     format!("{head}••••{tail}")
 }
 
+/// Base64-encode raw bytes (used to return exported files through the JSON API
+/// and MCP without losing binary data). Inline path avoids an extra top import.
+pub fn encode_b64(bytes: &[u8]) -> String {
+    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    B64.encode(bytes)
+}
+
 /// Apply a settings update: set a provider key (and optional base URL), persist,
 /// and return the masked confirmation. `clear=true` removes the saved key.
 pub fn apply_provider_settings(provider: &str, api_key: Option<&str>, base_url: Option<&str>, clear: bool) -> std::io::Result<serde_json::Value> {
