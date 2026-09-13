@@ -141,6 +141,11 @@ impl HalfEdgeMesh {
         &self.positions
     }
 
+    /// The list of faces, each being the vertex indices that make up one polygon.
+    pub fn faces(&self) -> &[Vec<u32>] {
+        &self.faces
+    }
+
     pub fn triangle_indices(&self) -> Vec<[u32; 3]> {
         let mut indices = Vec::new();
         for face in &self.faces {

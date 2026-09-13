@@ -247,7 +247,14 @@ impl SceneState {
                 dimensions,
                 subdivisions,
             } => {
-                let (vertex_count, face_count) = primitive_counts(primitive_type);
+                // Build a real mesh (positions + faces) so we can export it and
+                // render it in the viewport. The mesh kernel gives us actual
+                // vertex coordinates and faces, not just fake counters.
+                let mesh = build_primitive_mesh(primitive_type, dimensions.as_ref(), subdivisions.unwrap_or(1));
+                let positions: Vec<[f64; 3]> = mesh.as_ref().map(|m| m.positions().to_vec()).unwrap_or_default();
+                let faces: Vec<Vec<u32>> = mesh.as_ref().map(|m| m.faces().to_vec()).unwrap_or_default();
+                let vertex_count = positions.len();
+                let face_count = faces.len();
                 let data = json!({
                     "primitiveType": primitive_str(primitive_type),
                     "dimensions": {
@@ -258,6 +265,8 @@ impl SceneState {
                     "subdivisions": subdivisions.unwrap_or(1),
                     "vertexCount": vertex_count,
                     "faceCount": face_count,
+                    "positions": positions,
+                    "faces": faces,
                 });
                 let id = self.insert_record(EntityKind::Mesh3D, name, data);
                 Ok(json!({ "entityId": id, "vertexCount": vertex_count, "faceCount": face_count }))
@@ -834,6 +843,38 @@ fn primitive_str(p: &PrimitiveType) -> &'static str {
         PrimitiveType::Plane => "plane",
         PrimitiveType::Torus => "torus",
     }
+}
+
+/// Build a real 3D mesh (real vertex coordinates + faces) for a primitive.
+/// We ask the mesh kernel for the geometry, then scale it to the requested
+/// dimensions so the mesh is 1x1x1 at the default and matches the size in the UI.
+fn build_primitive_mesh(
+    p: &PrimitiveType,
+    dimensions: Option<&super::commands::Dimensions>,
+    _subdivisions: u32,
+) -> anyhow::Result<crate::mesh_kernel::HalfEdgeMesh> {
+    use crate::mesh_kernel::HalfEdgeMesh;
+    // Start from default-shape geometry, then scale by the requested x/y/z size.
+    let base = match p {
+        PrimitiveType::Cube => HalfEdgeMesh::cube(1.0)?,
+        PrimitiveType::Plane => HalfEdgeMesh::plane(1.0)?,
+        PrimitiveType::Cylinder => HalfEdgeMesh::cylinder(0.5, 1.0, 16)?,
+        PrimitiveType::Sphere => HalfEdgeMesh::sphere(0.5, 16, 8)?,
+        PrimitiveType::Cone => HalfEdgeMesh::cone(0.5, 1.0, 16)?,
+        PrimitiveType::Torus => HalfEdgeMesh::torus(0.5, 0.2, 8, 16)?,
+    };
+    let dim = dimensions.cloned().unwrap_or_default();
+    let sx = dim.x.abs().max(1e-6);
+    let sy = dim.y.abs().max(1e-6);
+    let sz = dim.z.abs().max(1e-6);
+    let scaled: Vec<[f64; 3]> = base
+        .positions()
+        .iter()
+        .map(|v| [v[0] * sx, v[1] * sy, v[2] * sz])
+        .collect();
+    let faces: Vec<Vec<u32>> = base.faces().to_vec();
+    // Rebuild a mesh from the scaled geometry so half-edges stay consistent.
+    HalfEdgeMesh::from_faces(scaled, faces).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 fn rig3d_bone_count(t: &Rig3DTemplate) -> usize {

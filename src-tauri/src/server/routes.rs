@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use axum::{routing::{get, post}, Router, Json, extract::{State, Query}, http::StatusCode};
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use crate::core::{CommandBus, CommandEnvelope, CommandResult, Issuer, StudioCommand};
 use crate::core::commands::{CodeLanguage, TargetEngine};
 
@@ -32,6 +33,7 @@ pub fn router(bus: Arc<CommandBus>) -> Router {
         .route("/api/v1/state/summary", get(state_summary))
         .route("/api/v1/project/save", post(project_save))
         .route("/api/v1/assets/generate-code", get(generate_code))
+        .route("/api/v1/mesh/export", get(export_mesh_endpoint))
         .with_state(bus)
 }
 
@@ -83,4 +85,46 @@ async fn generate_code(
     };
     let result = bus.dispatch(CommandEnvelope::new(Issuer::Rest, command)).await;
     Json(serde_json::json!({ "status": result.status, "fileName": result.result.get("fileName"), "code": result.result.get("code") }))
+}
+
+#[derive(serde::Deserialize)]
+struct ExportQuery {
+    entity: String,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    download: bool,
+}
+
+/// GET /api/v1/mesh/export?entity=<id-or-name>&format=obj
+/// Export a mesh to the requested format and return the file as base64.
+async fn export_mesh_endpoint(
+    State(bus): State<Arc<CommandBus>>,
+    Query(query): Query<ExportQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let format = crate::export::MeshFormat::from_str(query.format.as_deref().unwrap_or("obj"))
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("Unsupported mesh format: {:?}", query.format) })),
+            )
+        })?;
+    let artifact = bus
+        .with_state(|s| crate::export::export_mesh(s, &query.entity, format))
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        })?;
+    let data_b64 = B64.encode(&artifact.bytes);
+    Ok(Json(serde_json::json!({
+        "entity": query.entity,
+        "format": format.extension(),
+        "fileName": artifact.file_name,
+        "mimeType": artifact.mime,
+        "sizeBytes": artifact.bytes.len(),
+        "dataBase64": data_b64,
+        "download": query.download,
+    })))
 }

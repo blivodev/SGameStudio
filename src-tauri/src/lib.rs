@@ -2,6 +2,7 @@ pub mod core;
 pub mod server;
 pub mod mcp;
 pub mod mesh_kernel;
+pub mod export;
 pub mod audio_dsp;
 pub mod ai_gateway;
 
