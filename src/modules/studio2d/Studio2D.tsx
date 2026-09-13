@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, MousePointer2, Square, Circle, Star as StarIcon, Trash2, Pencil, Eraser, Undo2, Bone } from "lucide-react";
+import { Play, Pause, MousePointer2, Square, Circle, Star as StarIcon, Trash2, Pencil, Eraser, Undo2, Bone, Download } from "lucide-react";
 import { Button, Panel } from "../../components/ui/primitives";
 import { dispatchCommand } from "../../services/commandBridge";
+import { buildSvg } from "../../lib/svg";
 import { lerpPosition, upsertKeyframe, EASING_IDS, EASING_LABELS, type EasingId } from "../../lib/anim";
 import { useStudioStore } from "../../store/studioStore";
 
@@ -391,6 +392,43 @@ export default function Studio2D() {
     if (rigJoint === idx) setRigJoint(null);
   };
 
+  const downloadBlob = (content: BlobPart, type: string, fileName: string) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportSvg = () => {
+    const width = canvasRef.current?.width ?? 800;
+    const height = canvasRef.current?.height ?? 600;
+    const svg = buildSvg({
+      width,
+      height,
+      background: "#0d1117",
+      shapes: shapes.map((s) => ({ kind: s.kind, x: s.x, y: s.y, w: s.w, h: s.h, fill: s.fill })),
+      strokes: strokes.map((s) => ({ points: s.points, color: s.color, size: s.size, eraser: s.eraser })),
+      bones: armature.map((j) => ({ x: j.x, y: j.y, parent: j.parent })),
+    });
+    downloadBlob(svg, "image/svg+xml", "sgame_2d.svg");
+  };
+
+  const exportPng = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = "sgame_2d.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const ratio = useMemo(() => frame / Math.max(1, MAX_FRAMES), [frame]);
 
   return (
@@ -502,6 +540,18 @@ export default function Studio2D() {
               <Button size="sm" variant="ghost" className="w-full justify-start gap-2 text-red-400 hover:text-red-300" onClick={() => { setArmature([]); setRigJoint(null); }} disabled={armature.length === 0}>
                 <Trash2 className="h-4 w-4" /> Clear rig
               </Button>
+            </div>
+          </Panel>
+
+          <Panel title="Export">
+            <div className="flex flex-col gap-1.5 text-xs">
+              <Button size="sm" className="w-full justify-start gap-2" onClick={exportSvg}>
+                <Download className="h-4 w-4" /> Export SVG (vector)
+              </Button>
+              <Button size="sm" className="w-full justify-start gap-2" onClick={exportPng}>
+                <Download className="h-4 w-4" /> Export PNG (image)
+              </Button>
+              <p className="text-[11px] text-muted">Exports shapes, freehand strokes, and the skeleton rig as vectors you can open in Inkscape/Blender.</p>
             </div>
           </Panel>
         </div>
