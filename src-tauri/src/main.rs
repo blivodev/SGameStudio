@@ -82,6 +82,29 @@ fn main() -> anyhow::Result<()> {
     } else {
         #[cfg(feature = "gui")]
         {
+            // In the desktop app we must also expose the backend REST/WS/MCP-SSE
+            // server on the loopback port so the UI's health check, WebSocket,
+            // settings API and AI routing all work (previously only --server spun
+            // it up, which is why the UI showed "disconnected" and had nowhere to
+            // save AI provider keys). The server runs on its own Tokio runtime in
+            // a background thread so it never blocks the WebView event loop.
+            let port = sgame_studio::server::default_port();
+            std::thread::spawn(move || {
+                let runtime = match tokio::runtime::Runtime::new() {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::error!("failed to create tokio runtime: {e}");
+                        return;
+                    }
+                };
+                let bus = std::sync::Arc::new(sgame_studio::core::CommandBus::new(sgame_studio::core::SceneState::new()).0);
+                let host: std::net::IpAddr = cli.host.clone().parse().unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+                tracing::info!("GUI mode: starting embedded backend on {host}:{port}");
+                if let Err(e) = runtime.block_on(sgame_studio::server::run_server(bus, host, port)) {
+                    tracing::error!("embedded backend error: {e}");
+                }
+            });
+
             tauri::Builder::default()
                 .run(tauri::generate_context!())
                 .map_err(|e| anyhow::anyhow!("GUI error: {e}"))?;

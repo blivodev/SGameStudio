@@ -137,6 +137,7 @@ async fn get_settings() -> Json<serde_json::Value> {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SettingsBody {
     #[serde(default)]
     provider: Option<String>,
@@ -163,4 +164,28 @@ async fn apply_settings(Json(body): Json<SettingsBody>) -> Result<Json<serde_jso
     )
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?;
     Ok(Json(result))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The documented REST contract sends camelCase: { provider, apiKey, baseUrl, clear }.
+    #[test]
+    fn settings_body_accepts_camelcase() {
+        let body = r#"{"provider":"openrouter","apiKey":"sk-abc123","baseUrl":"https://openrouter.ai/api/v1"}"#;
+        let parsed: SettingsBody = serde_json::from_str(body).expect("camelCase settings body should parse");
+        assert_eq!(parsed.provider.as_deref(), Some("openrouter"));
+        assert_eq!(parsed.api_key.as_deref(), Some("sk-abc123"));
+        assert_eq!(parsed.base_url.as_deref(), Some("https://openrouter.ai/api/v1"));
+        assert!(!parsed.clear);
+    }
+
+    #[test]
+    fn settings_body_clear_flag() {
+        let body = r#"{"provider":"openai","clear":true}"#;
+        let parsed: SettingsBody = serde_json::from_str(body).unwrap();
+        assert!(parsed.clear);
+        assert_eq!(parsed.provider.as_deref(), Some("openai"));
+    }
 }

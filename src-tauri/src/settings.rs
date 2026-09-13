@@ -78,6 +78,8 @@ impl ProviderRegistry {
 
 /// Look up a provider's real key. Env vars win; the on-disk registry is the fallback.
 /// Recognised env names: SGAME_<PROVIDER_UPPER>_KEY, e.g. SGAME_OPENROUTER_KEY.
+/// Registry keys are stored obfuscated at rest, so they are deobfuscated here before
+/// being handed out (both to the AI gateway and to the masked display).
 pub fn resolve_api_key(provider: &str) -> Option<String> {
     let env_name = format!("SGAME_{}_KEY", provider.to_uppercase().replace('-', "_"));
     if let Ok(k) = std::env::var(&env_name) {
@@ -86,10 +88,17 @@ pub fn resolve_api_key(provider: &str) -> Option<String> {
         }
     }
     let reg = ProviderRegistry::load();
-    reg.providers
-        .get(provider)
-        .and_then(|p| p.api_key.clone())
+    reg.providers.get(provider).and_then(resolve_registry_key)
+}
+
+/// Turn one stored provider entry into its real (deobfuscated) key, if any.
+/// Pure and testable without touching the filesystem.
+pub fn resolve_registry_key(entry: &SavedProvider) -> Option<String> {
+    entry
+        .api_key
+        .clone()
         .filter(|k| !k.is_empty())
+        .map(|k| deobfuscate(&k))
 }
 
 /// Basic lossy encoding so at-rest keys are not plaintext (defense in depth).
@@ -202,6 +211,17 @@ mod tests {
     fn obfuscation_roundtrips() {
         let k = "sk-test-123";
         assert_eq!(deobfuscate(&obfuscate(k)), k);
+    }
+
+    #[test]
+    fn registry_key_is_deobfuscated_on_resolve() {
+        let key = "sk-human-readable-abc123";
+        let entry = SavedProvider { base_url: None, api_key: Some(obfuscate(key)) };
+        assert_eq!(resolve_registry_key(&entry).as_deref(), Some(key));
+        let empty = SavedProvider { base_url: None, api_key: Some(String::new()) };
+        assert_eq!(resolve_registry_key(&empty), None);
+        let none = SavedProvider { base_url: None, api_key: None };
+        assert_eq!(resolve_registry_key(&none), None);
     }
 
     #[test]
