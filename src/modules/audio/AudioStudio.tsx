@@ -7,6 +7,7 @@ import { Panel, Button } from '../../components/ui/primitives';
 export default function AudioStudio() {
   const [bpm, setBpm] = useState<number>(120);
   const [leadRow, setLeadRow] = useState<boolean[]>(Array(16).fill(false));
+  const [bassRow, setBassRow] = useState<boolean[]>(Array(16).fill(false));
   const [drumRow, setDrumRow] = useState<boolean[]>(Array(16).fill(false));
   const [voice, setVoice] = useState<string>("en_US-lessac-medium");
   const [effect, setEffect] = useState<string>("none");
@@ -56,6 +57,11 @@ export default function AudioStudio() {
           },
           {
             channelIndex: 1,
+            instrument: "bass",
+            notes: bassRow.map((on) => (on ? "A-1" : "---"))
+          },
+          {
+            channelIndex: 2,
             instrument: "drums",
             notes: drumRow.map((on) => (on ? "D-1" : "---"))
           }
@@ -143,6 +149,20 @@ export default function AudioStudio() {
                     const newRow = [...leadRow];
                     newRow[i] = !newRow[i];
                     setLeadRow(newRow);
+                  }}
+                  className={`h-6 w-6 rounded ${on ? "bg-accent" : "bg-surfaceAlt border border-border"}`}
+                />
+              ))}
+            </div>
+            <span className="text-sm">Bass</span>
+            <div className="flex gap-1">
+              {bassRow.map((on, i) => (
+                <Button
+                  key={`bass-${i}`}
+                  onClick={() => {
+                    const newRow = [...bassRow];
+                    newRow[i] = !newRow[i];
+                    setBassRow(newRow);
                   }}
                   className={`h-6 w-6 rounded ${on ? "bg-accent" : "bg-surfaceAlt border border-border"}`}
                 />

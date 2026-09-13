@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type StudioModule = "2d" | "3d" | "audio" | "assembler";
+type StudioModule = "2d" | "3d" | "audio" | "assembler" | "anim" | "video";
 export type Theme = "obsidian" | "cyberpunk" | "paper" | "high-contrast";
 
 interface EntityInfo {

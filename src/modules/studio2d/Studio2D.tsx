@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, MousePointer2, Square, Circle, Star as StarIcon, Trash2 } from "lucide-react";
+import { Play, Pause, MousePointer2, Square, Circle, Star as StarIcon, Trash2, Pencil, Eraser, Undo2 } from "lucide-react";
 import { Button, Panel } from "../../components/ui/primitives";
 import { dispatchCommand } from "../../services/commandBridge";
-import { lerpPosition, upsertKeyframe } from "../../lib/anim";
+import { lerpPosition, upsertKeyframe, EASING_IDS, EASING_LABELS, type EasingId } from "../../lib/anim";
 import { useStudioStore } from "../../store/studioStore";
 
-type Tool = "select" | "rect" | "ellipse" | "star";
+type Tool = "select" | "rect" | "ellipse" | "star" | "brush" | "eraser";
 type ShapeKind = "rect" | "ellipse" | "star";
 
 interface LocalShape {
@@ -19,13 +19,28 @@ interface LocalShape {
   fill: string;
 }
 
+interface Stroke {
+  id: string;
+  points: { x: number; y: number }[];
+  color: string;
+  size: number;
+  eraser: boolean;
+}
+
 interface Keyframe {
   time: number;
   x: number;
   y: number;
 }
 
-const TOOL_COLORS: Record<Tool, string> = { select: "#22d3ee", rect: "#7c3aed", ellipse: "#22d3ee", star: "#f43f5e" };
+const TOOL_COLORS: Record<Tool, string> = {
+  select: "#22d3ee",
+  rect: "#7c3aed",
+  ellipse: "#22d3ee",
+  star: "#f43f5e",
+  brush: "#34d399",
+  eraser: "#ef4444",
+};
 const PALETTE = ["#7c3aed", "#22d3ee", "#f43f5e", "#fbbf24", "#34d399", "#94a3b8"];
 const MAX_FRAMES = 48;
 
@@ -52,8 +67,15 @@ export default function Studio2D() {
 
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [ease, setEase] = useState<EasingId>("linear");
+  const [onion, setOnion] = useState(false);
   const [drag, setDrag] = useState<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [draw, setDraw] = useState<{ kind: ShapeKind; startX: number; startY: number } | null>(null);
+
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [brushColor, setBrushColor] = useState(PALETTE[4]);
+  const [brushSize, setBrushSize] = useState(6);
+  const [painting, setPainting] = useState<{ points: { x: number; y: number }[]; eraser: boolean } | null>(null);
 
   const selected = shapes.find((s) => s.id === selectedId) ?? null;
 
@@ -84,7 +106,7 @@ export default function Studio2D() {
 
   const interpolate = (t: number): { x: number; y: number } | null => {
     if (!selectedId) return null;
-    return lerpPosition(keyframes[selectedId] ?? [], t);
+    return lerpPosition(keyframes[selectedId] ?? [], t, ease);
   };
 
   // Playback loop
@@ -122,6 +144,24 @@ export default function Studio2D() {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
     }
 
+    // Freehand paint strokes (eraser strokes punch through to the background).
+    const renderStroke = (st: Stroke) => {
+      if (st.points.length === 0) return;
+      ctx.beginPath();
+      ctx.moveTo(st.points[0].x, st.points[0].y);
+      for (let i = 1; i < st.points.length; i++) ctx.lineTo(st.points[i].x, st.points[i].y);
+      ctx.strokeStyle = st.eraser ? "#0d1117" : st.color;
+      ctx.lineWidth = st.size;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    };
+    strokes.forEach(renderStroke);
+    if (painting && painting.points.length > 0) {
+      const live: Stroke = { id: "live", points: painting.points, color: painting.eraser ? "#0d1117" : brushColor, size: brushSize, eraser: painting.eraser };
+      renderStroke(live);
+    }
+
     const drawShape = (s: LocalShape, ex: number, ey: number, isSel: boolean) => {
       ctx.beginPath();
       if (s.kind === "ellipse") ctx.ellipse(ex, ey, s.w / 2, s.h / 2, 0, 0, Math.PI * 2);
@@ -152,6 +192,17 @@ export default function Studio2D() {
 
     shapes.forEach((s) => {
       const isSelected = s.id === selectedId;
+      if (isSelected && onion) {
+        const sks = selectedId ? keyframes[selectedId] ?? [] : [];
+        sks.forEach((k) => {
+          ctx.beginPath();
+          ctx.arc(k.x, k.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(34,211,238,0.6)";
+          ctx.stroke();
+        });
+      }
       let pos: { x: number; y: number } | null = null;
       if (isSelected && playing) pos = interpolate(frame);
       if (isSelected && drag && drag.id === s.id && !playing) pos = { x: s.x, y: s.y };
@@ -167,7 +218,7 @@ export default function Studio2D() {
       ctx.strokeRect(selected.x - selected.w / 2 - 5, selected.y - selected.h / 2 - 5, selected.w + 10, selected.h + 10);
       ctx.setLineDash([]);
     }
-  }, [shapes, selectedId, playing, frame, drag, keyframes, selected]);
+  }, [shapes, selectedId, playing, frame, drag, keyframes, selected, ease, onion, strokes, painting, brushColor, brushSize]);
 
   useEffect(() => {
     redraw();
@@ -188,6 +239,9 @@ export default function Studio2D() {
       const hit = shapeAtPoint(shapes, px, py);
       setSelectedId(hit ? hit.id : null);
       if (hit) setDrag({ id: hit.id, startX: px, startY: py, origX: hit.x, origY: hit.y });
+    } else if (tool === "brush" || tool === "eraser") {
+      setSelectedId(null);
+      setPainting({ points: [{ x: px, y: py }], eraser: tool === "eraser" });
     } else {
       const kind: ShapeKind = tool === "rect" ? "rect" : tool === "ellipse" ? "ellipse" : "star";
       setDraw({ kind, startX: px, startY: py });
@@ -196,6 +250,13 @@ export default function Studio2D() {
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (painting) {
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      setPainting((prev) => (prev ? { ...prev, points: [...prev.points, { x: px, y: py }] } : prev));
+      return;
+    }
     if (drag) {
       const rect = canvasRef.current!.getBoundingClientRect();
       const px = e.clientX - rect.left;
@@ -207,6 +268,16 @@ export default function Studio2D() {
   };
 
   const onPointerUp = () => {
+    if (painting && painting.points.length > 0) {
+      setStrokes((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), points: painting.points, color: brushColor, size: brushSize, eraser: painting.eraser },
+      ]);
+      setPainting(null);
+      setDrag(null);
+      return;
+    }
+    setPainting(null);
     if (draw) {
       const rect = canvasRef.current!.getBoundingClientRect();
       const px = draw.startX;
@@ -251,12 +322,41 @@ export default function Studio2D() {
         <div className="w-44 shrink-0 border-r border-border p-2 space-y-2">
           <Panel title="Tools">
             <div className="flex flex-col gap-1.5">
-              {(["select", "rect", "ellipse", "star"] as Tool[]).map((t) => (
+              {(["select", "rect", "ellipse", "star", "brush", "eraser"] as Tool[]).map((t) => (
                 <Button key={t} size="sm" variant={tool === t ? "accent" : "ghost"} className="w-full justify-start gap-2" onClick={() => setTool(t)}>
-                  {t === "select" ? <MousePointer2 className="h-4 w-4" /> : t === "rect" ? <Square className="h-4 w-4" /> : t === "ellipse" ? <Circle className="h-4 w-4" /> : <StarIcon className="h-4 w-4" />}
+                  {t === "select" ? <MousePointer2 className="h-4 w-4" /> : t === "rect" ? <Square className="h-4 w-4" /> : t === "ellipse" ? <Circle className="h-4 w-4" /> : t === "star" ? <StarIcon className="h-4 w-4" /> : t === "brush" ? <Pencil className="h-4 w-4" /> : <Eraser className="h-4 w-4" />}
                   {t[0].toUpperCase() + t.slice(1)}
                 </Button>
               ))}
+            </div>
+
+            {(tool === "brush" || tool === "eraser") && (
+              <div className="mt-2 space-y-2 rounded border border-border p-2">
+                <div>
+                  <label className="text-[11px] text-muted">Brush size · {brushSize}px</label>
+                  <input type="range" min={2} max={40} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full" aria-label="Brush size" />
+                </div>
+                {tool === "brush" && (
+                  <div>
+                    <label className="text-[11px] text-muted">Color</label>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {PALETTE.map((c) => (
+                        <button key={c} type="button" onClick={() => setBrushColor(c)} aria-label={`Color ${c}`} className={`h-5 w-5 rounded border ${brushColor === c ? "border-white" : "border-transparent"}`} style={{ background: c }} />
+                      ))}
+                      <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} className="h-5 w-5 cursor-pointer rounded border border-border bg-transparent p-0" aria-label="Custom color" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-2 flex flex-col gap-1.5">
+              <Button size="sm" variant="ghost" className="w-full justify-start gap-2" onClick={() => setStrokes((s) => s.slice(0, -1))} disabled={strokes.length === 0}>
+                <Undo2 className="h-4 w-4" /> Undo stroke
+              </Button>
+              <Button size="sm" variant="ghost" className="w-full justify-start gap-2 text-red-400 hover:text-red-300" onClick={() => setStrokes([])} disabled={strokes.length === 0}>
+                <Trash2 className="h-4 w-4" /> Clear paint
+              </Button>
             </div>
             {selected && (
               <Button size="sm" variant="ghost" className="w-full justify-start gap-2 text-red-400 hover:text-red-300" onClick={() => { deleteKeyframes(selected.id); setShapes((prev) => prev.filter((s) => s.id !== selected.id)); setSelectedId(null); }}>
@@ -271,6 +371,27 @@ export default function Studio2D() {
                 <Button size="sm" className="w-full" onClick={addKeyframe}>
                   Record Keyframe @ {frame}
                 </Button>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-[11px] text-muted">Ease</label>
+                  <select
+                    value={ease}
+                    onChange={(e) => setEase(e.target.value as EasingId)}
+                    className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px]"
+                    aria-label="Keyframe easing"
+                  >
+                    {EASING_IDS.map((id) => (
+                      <option key={id} value={id}>{EASING_LABELS[id]}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOnion((o) => !o)}
+                  className={`flex w-full items-center justify-center gap-1 rounded border px-2 py-1 text-[11px] ${onion ? "border-accent bg-accent/20" : "border-border"}`}
+                >
+                  <span className={`h-2 w-2 rounded-full ${onion ? "bg-accent-2" : "bg-muted/40"}`} />
+                  Onion skin {onion ? "on" : "off"}
+                </button>
                 <div className="flex flex-wrap gap-1">
                   {(selectedId ? keyframes[selectedId] ?? [] : []).map((k) => (
                     <span key={k.time} className="rounded bg-surfaceAlt px-1.5 py-0.5 font-mono text-[10px]">

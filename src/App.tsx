@@ -4,17 +4,19 @@ import { checkHealth } from "./services/commandBridge";
 import { studioSocket } from "./services/eventSocket";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as Select from "@radix-ui/react-select";
-import { PenTool, Boxes, AudioWaveform, Package, Settings } from "lucide-react";
+import { PenTool, Boxes, AudioWaveform, Package, Clapperboard, Aperture, Settings } from "lucide-react";
 import { Button } from "./components/ui/primitives";
 import Studio2D from "./modules/studio2d/Studio2D";
 import Studio3D from "./modules/studio3d/Studio3D";
 import AudioStudio from "./modules/audio/AudioStudio";
 import Assembler from "./modules/assembler/Assembler";
+import AnimationStudio from "./modules/anim/AnimationStudio";
+import VideoStudio from "./modules/video/VideoStudio";
 import ChatDock from "./components/chat/ChatDock";
 import SettingsDialog from "./components/settings/SettingsDialog";
 import type { Theme } from "./store/studioStore";
 
-const asModule = (v: string) => v as "2d" | "3d" | "audio" | "assembler";
+const asModule = (v: string) => v as "2d" | "3d" | "audio" | "assembler" | "anim" | "video";
 
 export default function App() {
   const { activeModule, setActiveModule, theme, setTheme, initTheme, connection, setConnection, projectName, targetEngine, lastError, setLastError } = useStudioStore();
@@ -35,6 +37,8 @@ export default function App() {
     { id: "2d", label: "2D Studio", icon: <PenTool className="h-4 w-4" /> },
     { id: "3d", label: "3D Studio", icon: <Boxes className="h-4 w-4" /> },
     { id: "audio", label: "Audio Studio", icon: <AudioWaveform className="h-4 w-4" /> },
+    { id: "anim", label: "Animation", icon: <Aperture className="h-4 w-4" /> },
+    { id: "video", label: "Video / Motion", icon: <Clapperboard className="h-4 w-4" /> },
     { id: "assembler", label: "Assembler", icon: <Package className="h-4 w-4" /> },
   ];
 
@@ -80,7 +84,7 @@ export default function App() {
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-40 shrink-0 flex-col gap-1 border-r border-border p-2">
+        <nav className="flex w-44 shrink-0 flex-col gap-1 border-r border-border p-2">
           {modules.map((m) => (
             <Button key={m.id} variant={activeModule === m.id ? "accent" : "ghost"} size="sm" className="w-full justify-start gap-2" onClick={() => setActiveModule(m.id)}>
               {m.icon}
@@ -98,6 +102,12 @@ export default function App() {
             </Tabs.Content>
             <Tabs.Content className="h-full outline-none" value="audio">
               <AudioStudio />
+            </Tabs.Content>
+            <Tabs.Content className="h-full outline-none" value="anim">
+              <AnimationStudio />
+            </Tabs.Content>
+            <Tabs.Content className="h-full outline-none" value="video">
+              <VideoStudio />
             </Tabs.Content>
             <Tabs.Content className="h-full outline-none" value="assembler">
               <Assembler />
