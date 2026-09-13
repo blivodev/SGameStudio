@@ -69,6 +69,19 @@ Comprehensive project documentation is organized in the `docs/` folder:
    Complete specification of all Model Context Protocol (MCP) tools, resources, and prompts, as well as the REST API and WebSocket events for headless automation.
 3. [**docs/IMPLEMENTATION_ROADMAP.md**](docs/IMPLEMENTATION_ROADMAP.md):  
    Step-by-step implementation milestones, sprint-by-sprint execution plan, project folder structure, automated testing framework, and starter asset pack specifications.
+4. [**docs/USER_MANUAL_ELI5.md**](docs/USER_MANUAL_ELI5.md):  
+   A plain-English user manual — how to draw, animate, build, and connect the AI assistant.
+5. [**docs/DEVELOPER_GUIDE_ELI5.md**](docs/DEVELOPER_GUIDE_ELI5.md):  
+   A plain-English contributor guide — where things live, how to add endpoints/panels, how to test, and how to publish a new `.exe`.
+
+### Quick start with AI
+
+1. Open **Settings** (gear icon, top-right).
+2. Under **AI Provider API Keys**, paste a key for any provider (OpenRouter,
+   DeepInfra, OpenAI, Anthropic, or Gemini) and click **Save**.
+3. Ask the **AI Assistant** (right-hand chat) anything — it now runs through the
+   configured provider automatically. Keys are stored obfuscated and are never
+   returned unmasked.
 
 ---
 

@@ -35,6 +35,7 @@ pub fn router(bus: Arc<CommandBus>) -> Router {
         .route("/api/v1/assets/generate-code", get(generate_code))
         .route("/api/v1/mesh/export", get(export_mesh_endpoint))
         .route("/api/v1/settings", get(get_settings).post(apply_settings))
+        .route("/api/v1/ai/chat", post(ai_chat))
         .with_state(bus)
 }
 
@@ -166,6 +167,59 @@ async fn apply_settings(Json(body): Json<SettingsBody>) -> Result<Json<serde_jso
     Ok(Json(result))
 }
 
+#[derive(serde::Deserialize)]
+struct AiChatBody {
+    message: String,
+    #[serde(default)]
+    task: Option<String>,
+}
+
+/// POST /api/v1/ai/chat — run the in-app assistant through the configured chat
+/// provider. Uses `resolve_with_fallback` so the storage API-key (set via the
+/// Settings dialog, SGAME_<PROVIDER>_KEY, or providers.json) is picked up live.
+async fn ai_chat(
+    Json(body): Json<AiChatBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let message = body.message.trim();
+    if message.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "empty message" }))));
+    }
+    let task = match body.task.as_deref() {
+        Some("chat") | None => crate::ai_gateway::AiTask::ChatAssistant,
+        Some(other) => {
+            return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": format!("unknown task: {other}") }))));
+        }
+    };
+    let config = crate::ai_gateway::RoutingConfig::default_config();
+    let providers = crate::ai_gateway::configured_providers();
+    // Resolve the provider to check availability before dispatching, so a
+    // missing API key yields a clear "configure a key" message instead of a
+    // confusing upstream HTTP error.
+    let resolved = config.resolve_with_fallback(task);
+    let needs_key = match resolved {
+        Some((provider_name, _)) => !crate::ai_gateway::provider_usable(&provider_name),
+        None => true,
+    };
+    if needs_key {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "AI provider is not configured. Add an API key in Settings → AI Provider API Keys."
+            })),
+        ));
+    }
+    match crate::ai_gateway::run_task(&config, &providers, task, message).await {
+        Ok(reply) => Ok(Json(serde_json::json!({ "reply": reply, "task": task.config_key() }))),
+        Err(crate::ai_gateway::AiError::NotConfigured(key)) => Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": format!("AI provider for '{key}' is not configured. Add an API key in Settings → AI Provider API Keys.")
+            })),
+        )),
+        Err(e) => Err((StatusCode::BAD_GATEWAY, Json(serde_json::json!({ "error": e.to_string() })))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,5 +241,14 @@ mod tests {
         let parsed: SettingsBody = serde_json::from_str(body).unwrap();
         assert!(parsed.clear);
         assert_eq!(parsed.provider.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn ai_chat_body_parses_message_and_task() {
+        let body: AiChatBody = serde_json::from_str(r#"{"message":"hello","task":"chat"}"#).unwrap();
+        assert_eq!(body.message, "hello");
+        assert_eq!(body.task.as_deref(), Some("chat"));
+        let def: AiChatBody = serde_json::from_str(r#"{"message":"hi"}"#).unwrap();
+        assert_eq!(def.task, None);
     }
 }

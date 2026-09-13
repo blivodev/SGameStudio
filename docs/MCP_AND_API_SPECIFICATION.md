@@ -641,6 +641,63 @@ Generate ready-to-use controller script for an assembled game entity.
 
 #### `GET /api/v1/health`
 Returns service status, GPU hardware accelerator status, and active connections.
+```json
+{ "status": "ok", "service": "sgame-studio", "version": "0.1.0" }
+```
+
+#### `GET /api/v1/mesh/export`
+Exports a mesh entity to a standard 3D format and returns the file (base64).
+- **Query Parameters**:
+  - `entity`: name or ID of the mesh (`mesh3d_1`, `Knight_Shield`)
+  - `format`: `obj` | `stl` | `stl_bin` | `glb` | `ply` | `ply_bin`
+  - `download`: `true|false` (default `false`)
+- **Response `200 OK`**:
+  ```json
+  {
+    "entity": "Knight_Shield",
+    "format": "obj",
+    "fileName": "Knight_Shield.obj",
+    "mimeType": "model/obj",
+    "sizeBytes": 1240,
+    "dataBase64": "...",
+    "download": false
+  }
+  ```
+
+#### `GET /api/v1/settings`
+Reads the live settings: AI routing matrix, which providers have an API key configured (masked), and export defaults.
+```json
+{
+  "aiRouting": { "chat_assistant": { "provider": "deepinfra", "model": "meta-llama/Meta-Llama-3.1-70B-Instruct", "endpoint": null } },
+  "providers": { "openrouter": { "configured": true, "keyMasked": "sk-a••••mnop" } },
+  "exportDefaults": { "defaultEngine": "godot4", "audioFormat": "ogg", "meshFormat": "glb" }
+}
+```
+- Keys are **never returned unmasked** — only a masked preview (`first4••••last4`) reaches the browser.
+
+#### `POST /api/v1/settings`
+Saves (or clears) a provider API key. The body uses camelCase (`apiKey`, not `api_key`); the backend stores it obfuscated at rest and deobfuscates it only when resolving for AI calls.
+- **Request Body**:
+  ```json
+  { "provider": "openrouter", "apiKey": "sk-...", "baseUrl": "https://openrouter.ai/api/v1" }
+  ```
+  To clear: `{ "provider": "openrouter", "clear": true }`
+- **Response `200 OK`**: `{ "provider": "openrouter", "configured": true, "keyMasked": null }`
+- Keys can alternatively come from env vars: `SGAME_OPENROUTER_KEY`, `SGAME_OPENAI_KEY`, `SGAME_ANTHROPIC_KEY`, `SGAME_GEMINI_KEY`, `SGAME_DEEPINFRA_KEY`. Env vars win over the on-disk registry.
+
+#### `POST /api/v1/ai/chat`
+Runs the in-app AI assistant through the configured chat provider (the one set in Settings / the routing matrix).
+- **Request Body**: `{ "message": "Create a sci-fi roomba chip tune", "task": "chat" }`
+- **Response `200 OK`**: `{ "reply": "...", "task": "chat_assistant" }`
+- If no chat provider API key is configured, returns **`503`** with a guiding message:
+  ```json
+  { "error": "AI provider is not configured. Add an API key in Settings → AI Provider API Keys." }
+  ```
+
+> **Desktop (GUI) mode** embeds the REST/WS/MCP-SSE server automatically on `127.0.0.1:8080`
+> (overridable via `SGAME_PORT`) so the UI's health check, WebSocket, settings, export, and
+> AI-chat calls all work without running a separate `--server` process. A permissive CORS
+> layer allows the WebView origin to reach the loopback backend.
 
 ---
 

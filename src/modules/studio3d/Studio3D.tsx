@@ -1,14 +1,41 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { parseEntityRef } from '../../lib/parseResult';
 import { dispatchCommand } from '../../services/commandBridge';
+import { exportMesh, downloadAssetResult, type MeshFormatId } from '../../services/export';
 import { useStudioStore } from '../../store/studioStore';
-import { Button } from '../../components/ui/primitives';
+import { Button, Panel } from '../../components/ui/primitives';
 
 export default function Studio3D() {
   const { entities, addEntity, setLastError } = useStudioStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [selectedMesh, setSelectedMesh] = useState<string>("");
+  const [exporting, setExporting] = useState<MeshFormatId | null>(null);
+  const [exportNote, setExportNote] = useState<string | null>(null);
+
+  const meshes = useMemo(() => entities.filter((e) => e.kind === "mesh3d"), [entities]);
+
+  useEffect(() => {
+    if (!selectedMesh && meshes.length > 0) setSelectedMesh(meshes[0].name);
+  }, [meshes, selectedMesh]);
+
+  const doExport = async (format: MeshFormatId) => {
+    if (!selectedMesh) return;
+    setExporting(format);
+    setExportNote(null);
+    try {
+      const res = await exportMesh(selectedMesh, format);
+      downloadAssetResult(res);
+      setExportNote(`Exported ${selectedMesh} → ${res.fileName} (${(res.sizeBytes / 1024).toFixed(1)} KB)`);
+    } catch (e) {
+      setLastError(String(e));
+      setExportNote((e as Error).message);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   const threeRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -196,16 +223,65 @@ export default function Studio3D() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex gap-2 p-2 border-b border-border">
-        <Button onClick={() => addPrimitive("cube")}>Add Cube</Button>
-        <Button onClick={() => addPrimitive("cylinder")}>Add Cylinder</Button>
-        <Button onClick={() => addPrimitive("sphere")}>Add Sphere</Button>
-        <Button onClick={() => addPrimitive("torus")}>Add Torus</Button>
+    <div className="flex h-full min-h-0">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex gap-2 p-2 border-b border-border">
+          <Button onClick={() => addPrimitive("cube")}>Add Cube</Button>
+          <Button onClick={() => addPrimitive("cylinder")}>Add Cylinder</Button>
+          <Button onClick={() => addPrimitive("sphere")}>Add Sphere</Button>
+          <Button onClick={() => addPrimitive("torus")}>Add Torus</Button>
+        </div>
+
+        <div ref={containerRef} className="relative flex-1 min-h-0">
+          <canvas ref={canvasRef} className="h-full w-full" />
+        </div>
       </div>
-      
-      <div ref={containerRef} className="relative flex-1 min-h-0">
-        <canvas ref={canvasRef} className="h-full w-full" />
+
+      <div className="w-64 shrink-0 border-l border-border p-2">
+        <Panel title="Export Mesh">
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="text-[11px] text-muted">Mesh</label>
+              <select
+                value={selectedMesh}
+                onChange={(e) => setSelectedMesh(e.target.value)}
+                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+              >
+                {meshes.length === 0 && <option value="">No meshes yet</option>}
+                {meshes.map((m) => (
+                  <option key={m.id} value={m.name}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {(["obj", "stl", "glb", "ply"] as MeshFormatId[]).map((fmt) => (
+                <Button key={fmt} size="sm" disabled={!selectedMesh || exporting !== null} onClick={() => doExport(fmt)}>
+                  {exporting === fmt ? "…" : fmt.toUpperCase()}
+                </Button>
+              ))}
+            </div>
+
+            {exportNote && <p className="text-[11px] text-muted">{exportNote}</p>}
+            <p className="text-[11px] text-muted">
+              Exports real geometry via /api/v1/mesh/export (OBJ, STL, GLB, PLY) and downloads the file.
+            </p>
+          </div>
+        </Panel>
+
+        <div className="mt-2">
+          <Panel title="Scene">
+            <div className="flex flex-col gap-1 text-xs">
+              {meshes.length === 0 && <span className="text-muted">Add a primitive to populate the scene.</span>}
+              {meshes.map((m, i) => (
+                <div key={m.id} className="flex items-center justify-between rounded border border-border px-2 py-1">
+                  <span>{m.name}</span>
+                  <span className="text-muted">{["cube", "cylinder", "sphere", "torus"][i % 4]}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
       </div>
     </div>
   );

@@ -39,6 +39,23 @@ gantt
 
 ---
 
+## 1.5 Current Status (2026-09)
+
+Backend foundation is shipped and fully tested:
+
+- **Milestone 1 (Core)**: Dual-mode Rust engine (Tauri GUI + headless `--server`/`--mcp`), Unified Command Bus, `.sgsproj` zip roundtrip, AI Routing Matrix + multi-provider gateway (OpenRouter / DeepInfra / OpenAI / Anthropic / Gemini / Ollama / ComfyUI / Piper / AudioCraft).
+- **Milestone A (3D export)**: Real 3D geometry stored in state + exporters (OBJ / STL ASCII+binary / PLY ASCII+binary / GLB / SVG / WAV) exposed via `GET /api/v1/mesh/export`.
+- **Milestone B (Settings)**: AI provider API-key storage (`%APPDATA%\sgamestudio\providers.json`, obfuscated at rest, masked in UI, `SGAME_<PROVIDER>_KEY` env override) + `GET/POST /api/v1/settings` (camelCase `apiKey`).
+- **Milestone C (MCP)**: `sgame_export_asset`, `sgame_get_settings`, `sgame_save_provider_key` MCP tools.
+- **Milestone D (AI chat)**: `POST /api/v1/ai/chat` runs the in-app assistant through the configured chat provider (clean `503` when no key), wired to the Settings dialog.
+- **Desktop connection**: GUI mode embeds the REST/WS/MCP-SSE backend on `127.0.0.1:8080` (via `SGAME_PORT`) so the UI shows "connected" and can save keys / chat / export without a separate `--server` process.
+
+Frontend increments shipped: editable API-key Settings dialog, real AI Assistant (ChatDock → `/api/v1/ai/chat`), 3D Export panel (OBJ/STL/GLB/PLY download), and a 2D workbench (draw tools + select/move + keyframe position timeline with playback).
+
+**Remaining (largest gap is frontend):** full 2D rigging + tween easing + onion skin, 3D modeling/armature + IK/FK + NLA, DAW multi-track mixer + render-to-file, video/motion tab, animation workbench consolidation, in-app AI agentic tool-calling, and starter asset pack.
+
+---
+
 ## 2. Target Project Directory Structure
 
 ```text
@@ -49,7 +66,9 @@ SGameStudio/
 ├── docs/                          # Architecture, MCP, and Roadmap specifications
 │   ├── ARCHITECTURE.md
 │   ├── MCP_AND_API_SPECIFICATION.md
-│   └── IMPLEMENTATION_ROADMAP.md
+│   ├── IMPLEMENTATION_ROADMAP.md
+│   ├── USER_MANUAL_ELI5.md        # User-facing plain-English manual
+│   └── DEVELOPER_GUIDE_ELI5.md    # Contributor plain-English development guide
 ├── src-tauri/                     # Tauri v2 Rust native desktop & headless backend
 │   ├── Cargo.toml
 │   ├── tauri.conf.json            # Window configurations, permissions, icons

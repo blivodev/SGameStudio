@@ -604,6 +604,12 @@ While single-click desktop operation is the default, SGameStudio seamlessly supp
 | **Headless MCP Agent Mode** | `sgame-studio --mcp` | Runs Model Context Protocol on `stdio` for direct pairing with Claude Desktop, Cursor, or Antigravity. |
 | **Combined Server + MCP SSE** | `sgame-studio --server --port 8080 --mcp-sse` | Serves web clients, REST endpoints, and network MCP agents simultaneously. |
 
+> **GUI mode embeds the backend.** In the desktop GUI build, the Axum REST/WS/MCP-SSE server is
+> started automatically on `127.0.0.1:8080` (overridable via `SGAME_PORT`) in a background thread.
+> This is why the UI's connection indicator reads "connected" and the Settings dialog can save AI
+> provider API keys without running a separate `--server` process. A permissive CORS layer lets the
+> WebView origin talk to the loopback backend.
+
 ---
 
 ## 10. Subsystem 8: Model Context Protocol (MCP) Server Architecture
@@ -676,14 +682,23 @@ SGameStudio ships with four built-in high-fidelity themes defined via CSS design
 - **Paper Light**: Base background `#f8fafc`, surface `#ffffff`, border `#e2e8f0`, primary accent `#2563eb` (royal blue), text `#0f172a`.
 - **High-Contrast Pro**: Base background `#000000`, surface `#111111`, border `#ffffff`, primary accent `#ffff00` (safety yellow), text `#ffffff`.
 
-### Settings Schema (`settings.json`)
-Settings are automatically stored in the standard OS configuration directory:
-- **Windows**: `%APPDATA%\SGameStudio\settings.json`
-- **Linux**: `~/.config/sgamestudio/settings.json`
+### Settings Schema (`providers.json` + environment variables)
+AI provider API keys are stored obfuscated at rest (not plaintext) and are never returned unmasked to the UI:
+- **Windows**: `%APPDATA%\sgamestudio\providers.json`
+- **Linux**: `~/.local/share/sgamestudio/providers.json` (APPDATA fallback / XDG-like)
 
-Supported configurations:
-- AI Provider API Keys (encrypted using OS keyring/DPAPI).
+Keys can instead be supplied via environment variables, which always win and are
+never written to disk:
+- `SGAME_OPENROUTER_KEY`, `SGAME_DEEPINFRA_KEY`, `SGAME_OPENAI_KEY`,
+  `SGAME_ANTHROPIC_KEY`, `SGAME_GEMINI_KEY`
+
+Supported configurations include:
+- AI provider API keys (obfuscated at rest; masked `sk-a••••mnop` in the UI).
 - Local AI endpoints (Ollama host, ComfyUI host, Piper path).
 - Default game engine export target (Godot 4, Unity, Unreal 5).
-- Audio buffer size (128, 256, 512 samples) and sample rate (44100 / 48000 Hz).
-- Viewport graphics settings (WebGPU hardware vs. WebGL fallback, shadow map resolution).
+- Audio buffer size and sample rate.
+- Viewport graphics settings (WebGL vs. WebGPU, shadow map resolution).
+
+The in-app **Settings dialog** (`Settings → AI Provider API Keys`) writes keys via
+`POST /api/v1/settings` (camelCase `apiKey`), and the in-app **AI Assistant**
+(`ChatDock`) sends messages to `POST /api/v1/ai/chat`.
