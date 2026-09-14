@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Loader2, Copy } from 'lucide-react';
 import { parseEntityRef } from '../../lib/parseResult';
 import { dispatchCommand } from '../../services/commandBridge';
 import { useStudioStore } from '../../store/studioStore';
@@ -16,6 +17,11 @@ export default function Assembler() {
   const [outputDir, setOutputDir] = useState<string>("./dist/export");
   const [exportedFiles, setExportedFiles] = useState<string[]>([]);
   const [selectedEntity, setSelectedEntity] = useState<string>("");
+  const [codeLang, setCodeLang] = useState<string>("gdscript");
+  const [style, setStyle] = useState<string>("third_person_3d");
+  const [generatedCode, setGeneratedCode] = useState<string>("");
+  const [generatedName, setGeneratedName] = useState<string>("");
+  const [generating, setGenerating] = useState(false);
 
   const { entities, addEntity, setLastError } = useStudioStore();
 
@@ -54,6 +60,35 @@ export default function Assembler() {
       setExportedFiles(r.filesGenerated ?? []);
     } catch (e) {
       setLastError(String(e));
+    }
+  };
+
+  const generateCode = async () => {
+    if (!selectedEntity) return;
+    setGenerating(true);
+    try {
+      const res = await dispatchCommand("generate_engine_code", {
+        entityName: selectedEntity,
+        targetEngine: engine,
+        language: codeLang,
+        gameplayStyle: style,
+        customPrompt: null,
+      });
+      const r = res.result as { code?: string; fileName?: string };
+      setGeneratedCode(r.code ?? "");
+      setGeneratedName(r.fileName ?? "");
+    } catch (e) {
+      setLastError(String(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedCode);
+    } catch {
+      // clipboard may be unavailable in restricted webviews — safe to ignore
     }
   };
 
@@ -214,10 +249,54 @@ export default function Assembler() {
       </Panel>
 
       <Panel title="Generated Code" className="col-span-2">
-        <p className="text-xs text-muted">
-          Deterministic controller code generation (GDScript, C#, C++, Rust, TypeScript, Lua) lands with the Code Generator milestone.
-        </p>
-        <Button disabled>Copy</Button>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="text-xs text-muted">Language</label>
+            <select
+              value={codeLang}
+              onChange={(e) => setCodeLang(e.target.value)}
+              className="w-full rounded border border-border bg-surface px-2 py-1 text-sm"
+            >
+              <option value="gdscript">GDScript</option>
+              <option value="csharp">C#</option>
+              <option value="cpp">C++</option>
+              <option value="rust">Rust</option>
+              <option value="c">C</option>
+              <option value="typescript">TypeScript</option>
+              <option value="lua">Lua</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted">Gameplay Style</label>
+            <select
+              value={style}
+              onChange={(e) => setStyle(e.target.value)}
+              className="w-full rounded border border-border bg-surface px-2 py-1 text-sm"
+            >
+              <option value="platformer_2d">2D Platformer</option>
+              <option value="top_down_2d">2D Top-Down</option>
+              <option value="third_person_3d">3D Third-Person</option>
+              <option value="first_person_3d">3D First-Person</option>
+            </select>
+          </div>
+          <Button onClick={generateCode} disabled={!selectedEntity || generating}>
+            {generating ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null}
+            Generate Code
+          </Button>
+          <Button variant="ghost" onClick={copyCode} disabled={!generatedCode}>
+            <Copy className="mr-1 inline h-4 w-4" /> Copy
+          </Button>
+        </div>
+        {generatedCode ? (
+          <pre className="mt-2 max-h-72 overflow-auto rounded border border-border bg-background p-3 text-xs text-text">
+            <code>{generatedCode}</code>
+          </pre>
+        ) : (
+          <p className="mt-2 text-xs text-muted">
+            Pick a language and gameplay style, then Generate to write the character controller for the selected entity against this engine.
+            {generatedName ? <span className="text-accent-2"> File: {generatedName}</span> : null}
+          </p>
+        )}
       </Panel>
     </div>
   );
